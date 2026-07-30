@@ -1,0 +1,19 @@
+{
+    "name": "RoyalDecisions.Editor",
+    "rootNamespace": "RoyalDecisions.Editor",
+    "references": [
+        "RoyalDecisions.Data",
+        "RoyalDecisions.Domain"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
