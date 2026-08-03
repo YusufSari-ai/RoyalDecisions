@@ -3,7 +3,12 @@
     "rootNamespace": "RoyalDecisions.Editor",
     "references": [
         "RoyalDecisions.Data",
-        "RoyalDecisions.Domain"
+        "RoyalDecisions.Domain",
+        "RoyalDecisions.Presentation",
+        "RoyalDecisions.Composition",
+        "UnityEngine.UI",
+        "Unity.TextMeshPro",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [
         "Editor"

@@ -67,6 +67,9 @@ namespace RoyalDecisions.Tests.EditMode
             Assert.That(session.State, Is.EqualTo(GameSessionState.AwaitingDecision));
             Assert.That(presenter.LastShownCard.Id,
                 Is.EqualTo(GameSessionTestContent.OpeningCardId));
+            Assert.That(presenter.LastTurn, Is.EqualTo(1));
+            Assert.That(presenter.IndexOf("ShowTurn:1"),
+                Is.LessThan(presenter.IndexOf("ShowCard")));
         }
 
         [Test]

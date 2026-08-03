@@ -35,6 +35,8 @@ namespace RoyalDecisions.Tests.EditMode
 
         public bool IsBound { get; private set; }
 
+        public int LastTurn { get; private set; }
+
         public void ShowCard(CardDefinition card)
         {
             LastShownCard = card;
@@ -76,6 +78,12 @@ namespace RoyalDecisions.Tests.EditMode
         {
             LastStats = values;
             Calls.Add("RefreshStats");
+        }
+
+        public void ShowTurn(int oneBasedTurn)
+        {
+            LastTurn = oneBasedTurn;
+            Calls.Add("ShowTurn:" + oneBasedTurn);
         }
 
         public void ShowGameOver(GameOverResult result)

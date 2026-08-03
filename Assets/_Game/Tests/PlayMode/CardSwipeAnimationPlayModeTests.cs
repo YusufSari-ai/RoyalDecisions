@@ -39,6 +39,7 @@ namespace RoyalDecisions.Tests.PlayMode
 
         private List<ChoiceSide> confirmed;
         private List<ChoiceSide> exited;
+        private int impactPreviewCleared;
 
         [SetUp]
         public void SetUp()
@@ -73,18 +74,42 @@ namespace RoyalDecisions.Tests.PlayMode
 
             confirmed = new List<ChoiceSide>();
             exited = new List<ChoiceSide>();
-            controller.DecisionConfirmed += side => confirmed.Add(side);
-            controller.ExitAnimationCompleted += side => exited.Add(side);
+            impactPreviewCleared = 0;
+            controller.DecisionConfirmed += HandleDecisionConfirmed;
+            controller.ExitAnimationCompleted += HandleExitCompleted;
+            controller.ChoicePreviewCleared += HandleChoicePreviewCleared;
         }
 
         [TearDown]
         public void TearDown()
         {
+            if (controller != null)
+            {
+                controller.DecisionConfirmed -= HandleDecisionConfirmed;
+                controller.ExitAnimationCompleted -= HandleExitCompleted;
+                controller.ChoicePreviewCleared -= HandleChoicePreviewCleared;
+            }
+
             if (root != null)
             {
                 Object.Destroy(root);
                 root = null;
             }
+        }
+
+        private void HandleDecisionConfirmed(ChoiceSide side)
+        {
+            confirmed.Add(side);
+        }
+
+        private void HandleExitCompleted(ChoiceSide side)
+        {
+            exited.Add(side);
+        }
+
+        private void HandleChoicePreviewCleared()
+        {
+            impactPreviewCleared++;
         }
 
         private static RectTransform Child(Transform parentTransform, string name)
@@ -176,6 +201,7 @@ namespace RoyalDecisions.Tests.PlayMode
                 Is.EqualTo(0f).Within(0.001f));
             Assert.That(cardView.GetChoicePreviewStrength(ChoiceSide.Right),
                 Is.EqualTo(0f).Within(0.001f));
+            Assert.That(impactPreviewCleared, Is.EqualTo(1));
         }
 
         [UnityTest]
@@ -203,6 +229,7 @@ namespace RoyalDecisions.Tests.PlayMode
             Assert.That(confirmed.Count, Is.EqualTo(1), "the decision lands immediately");
             Assert.That(exited, Is.Empty, "the exit has not finished yet");
             Assert.That(controller.State, Is.EqualTo(CardSwipeState.Exiting));
+            Assert.That(impactPreviewCleared, Is.EqualTo(1));
 
             yield return WaitUntilSettled();
 

@@ -28,6 +28,8 @@ namespace RoyalDecisions.Composition
         [SerializeField] private HUDView hudView;
         [SerializeField] private GameOverView gameOverView;
         [SerializeField] private CardSwipeController swipeController;
+        [SerializeField] private RunStatusView runStatusView;
+        [SerializeField] private FooterView footerView;
 
         [Header("Audio")]
         [SerializeField] private AudioService audioService;
@@ -135,7 +137,7 @@ namespace RoyalDecisions.Composition
             }
 
             IGamePresenter presenter = new UnityGamePresenter(
-                cardView, hudView, gameOverView, swipeController);
+                cardView, hudView, gameOverView, swipeController, runStatusView, footerView);
 
             session = new GameSession(new GameSessionDependencies(
                 catalogue,
@@ -201,6 +203,8 @@ namespace RoyalDecisions.Composition
             {
                 swipeController.DecisionConfirmed += HandleDecisionConfirmed;
                 swipeController.ExitAnimationCompleted += HandleExitCompleted;
+                swipeController.ChoicePreviewChanged += HandleChoicePreviewChanged;
+                swipeController.ChoicePreviewCleared += HandleChoicePreviewCleared;
             }
 
             if (gameOverView != null)
@@ -222,6 +226,8 @@ namespace RoyalDecisions.Composition
             {
                 swipeController.DecisionConfirmed -= HandleDecisionConfirmed;
                 swipeController.ExitAnimationCompleted -= HandleExitCompleted;
+                swipeController.ChoicePreviewChanged -= HandleChoicePreviewChanged;
+                swipeController.ChoicePreviewCleared -= HandleChoicePreviewCleared;
             }
 
             if (gameOverView != null)
@@ -250,6 +256,30 @@ namespace RoyalDecisions.Composition
             session?.Restart();
         }
 
+        private void HandleChoicePreviewChanged(ChoiceSide side, float strength)
+        {
+            CardDefinition card = session?.CurrentCard;
+            if (card == null || hudView == null)
+            {
+                hudView?.ClearChoiceImpact();
+                return;
+            }
+
+            ChoiceDefinition choice = side == ChoiceSide.Left ? card.LeftChoice : card.RightChoice;
+            if (choice == null)
+            {
+                hudView.ClearChoiceImpact();
+                return;
+            }
+
+            hudView.ShowChoiceImpact(choice.Deltas, strength);
+        }
+
+        private void HandleChoicePreviewCleared()
+        {
+            hudView?.ClearChoiceImpact();
+        }
+
 #if UNITY_EDITOR
         /// <summary>Editor-only wiring hook shared by scene setup and tests.</summary>
         public void SetAuthoringReferences(
@@ -259,7 +289,9 @@ namespace RoyalDecisions.Composition
             GameOverView gameOver,
             CardSwipeController swipe,
             AudioService audio = null,
-            SessionStartMode startMode = SessionStartMode.NewGame)
+            SessionStartMode startMode = SessionStartMode.NewGame,
+            RunStatusView status = null,
+            FooterView footer = null)
         {
             catalogue = contentCatalogue;
             cardView = card;
@@ -268,6 +300,8 @@ namespace RoyalDecisions.Composition
             swipeController = swipe;
             audioService = audio;
             fallbackStartMode = startMode;
+            runStatusView = status;
+            footerView = footer;
         }
 #endif
     }

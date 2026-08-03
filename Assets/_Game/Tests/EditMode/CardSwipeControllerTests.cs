@@ -35,6 +35,9 @@ namespace RoyalDecisions.Tests.EditMode
 
         private List<ChoiceSide> confirmed;
         private List<ChoiceSide> exited;
+        private List<ChoiceSide> previewSides;
+        private List<float> previewStrengths;
+        private int previewCleared;
 
         [SetUp]
         public void SetUp()
@@ -75,6 +78,15 @@ namespace RoyalDecisions.Tests.EditMode
             exited = new List<ChoiceSide>();
             controller.DecisionConfirmed += side => confirmed.Add(side);
             controller.ExitAnimationCompleted += side => exited.Add(side);
+            previewSides = new List<ChoiceSide>();
+            previewStrengths = new List<float>();
+            previewCleared = 0;
+            controller.ChoicePreviewChanged += (side, strength) =>
+            {
+                previewSides.Add(side);
+                previewStrengths.Add(strength);
+            };
+            controller.ChoicePreviewCleared += () => previewCleared++;
         }
 
         [TearDown]
@@ -128,6 +140,16 @@ namespace RoyalDecisions.Tests.EditMode
             Assert.That(cardView.GetChoicePreviewStrength(ChoiceSide.Right), Is.EqualTo(0f));
         }
 
+        [Test]
+        public void DragPreviewReportsOnlyActiveSideAndClearsAfterSnapBack()
+        {
+            Swipe(PressX - 100f);
+
+            Assert.That(previewSides, Is.EqualTo(new[] { ChoiceSide.Left }));
+            Assert.That(previewStrengths[0], Is.EqualTo(0.4f).Within(0.001f));
+            Assert.That(previewCleared, Is.EqualTo(1));
+        }
+
         // --- Confirmation ------------------------------------------------------
 
         [Test]
@@ -137,6 +159,16 @@ namespace RoyalDecisions.Tests.EditMode
 
             Assert.That(confirmed, Is.EqualTo(new[] { ChoiceSide.Right }));
             Assert.That(controller.ConfirmedSide, Is.EqualTo(ChoiceSide.Right));
+        }
+
+        [Test]
+        public void ConfirmationClearsImpactPreviewBeforeDecisionCompletes()
+        {
+            Swipe(PressX + Threshold + 50f);
+
+            Assert.That(previewSides, Is.EqualTo(new[] { ChoiceSide.Right }));
+            Assert.That(previewCleared, Is.EqualTo(1));
+            Assert.That(confirmed, Is.EqualTo(new[] { ChoiceSide.Right }));
         }
 
         [Test]

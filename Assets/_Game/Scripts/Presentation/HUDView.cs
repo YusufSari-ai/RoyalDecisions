@@ -20,14 +20,16 @@ namespace RoyalDecisions.Presentation
     {
         private static readonly StatType[] RequiredStats =
         {
-            StatType.Authority,
             StatType.People,
             StatType.Security,
+            StatType.Authority,
             StatType.Wealth
         };
 
         [Tooltip("Exactly one item per statistic. Order does not matter; the stat on each does.")]
         [SerializeField] private StatItemView[] statItems = Array.Empty<StatItemView>();
+
+        [SerializeField] private InterfaceTextDefinition interfaceText;
 
         private StatSystem boundSystem;
 
@@ -57,16 +59,7 @@ namespace RoyalDecisions.Presentation
                 }
 
                 // The StatValues struct is passed by value and only ever read from.
-                float fill = StatDisplayMath.ToFill(values, item.Stat);
-
-                if (animated)
-                {
-                    item.SetFillAnimated(fill);
-                }
-                else
-                {
-                    item.SetFill(fill);
-                }
+                item.SetValue(values[item.Stat], animated);
             }
         }
 
@@ -77,8 +70,53 @@ namespace RoyalDecisions.Presentation
 
             if (item != null)
             {
-                item.SetFillAnimated(StatDisplayMath.ToFill(change.Current));
+                item.SetValue(change.Current, true);
             }
+        }
+
+        public void ShowChoiceImpact(StatDeltas deltas, float strength)
+        {
+            if (statItems == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < statItems.Length; i++)
+            {
+                StatItemView item = statItems[i];
+                if (item != null)
+                {
+                    item.ShowImpact(deltas[item.Stat], strength);
+                }
+            }
+        }
+
+        public void ClearChoiceImpact()
+        {
+            if (statItems == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < statItems.Length; i++)
+            {
+                statItems[i]?.ClearImpact();
+            }
+        }
+
+        public void ApplyTheme(GameUITheme theme)
+        {
+            if (statItems == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < statItems.Length; i++)
+            {
+                statItems[i]?.ApplyTheme(theme);
+            }
+
+            ApplyLabels();
         }
 
         /// <summary>
@@ -99,6 +137,7 @@ namespace RoyalDecisions.Presentation
             boundSystem.StatsChanged += OnStatsChanged;
 
             Render(boundSystem.Current);
+            ApplyLabels();
         }
 
         public void Unbind()
@@ -204,6 +243,28 @@ namespace RoyalDecisions.Presentation
             Unbind();
         }
 
+        private void Awake()
+        {
+            ApplyLabels();
+        }
+
+        public void ApplyLabels()
+        {
+            if (interfaceText == null || statItems == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < statItems.Length; i++)
+            {
+                StatItemView item = statItems[i];
+                if (item != null)
+                {
+                    item.SetLabel(interfaceText.GetStatLabel(item.Stat));
+                }
+            }
+        }
+
         private void OnValidate()
         {
             if (statItems == null || statItems.Length == 0)
@@ -219,9 +280,12 @@ namespace RoyalDecisions.Presentation
 
 #if UNITY_EDITOR
         /// <summary>Editor-only wiring hook shared by prefab setup and tests.</summary>
-        public void SetAuthoringReferences(StatItemView[] items)
+        public void SetAuthoringReferences(
+            StatItemView[] items,
+            InterfaceTextDefinition text = null)
         {
             statItems = items ?? Array.Empty<StatItemView>();
+            interfaceText = text;
         }
 #endif
     }

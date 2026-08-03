@@ -32,6 +32,8 @@ namespace RoyalDecisions.Application
 
         void RefreshStats(StatValues values);
 
+        void ShowTurn(int oneBasedTurn);
+
         void ShowGameOver(GameOverResult result);
 
         void HideGameOver();

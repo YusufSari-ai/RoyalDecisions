@@ -27,12 +27,24 @@ namespace RoyalDecisions.Presentation
 
         [SerializeField] private TMP_Text label;
 
+        [SerializeField] private TMP_Text valueText;
+        [SerializeField] private TMP_Text iconFallbackLabel;
+        [SerializeField] private TMP_Text impactLabel;
+        [SerializeField] private CanvasGroup impactGroup;
+        [SerializeField] private TMP_Text criticalLabel;
+
         [Tooltip("Fill units per second when animating. Zero snaps instantly.")]
         [Min(0f)]
         [SerializeField] private float animationSpeed = 2.5f;
 
         private float targetFill;
         private bool animating;
+        private int criticalBoundary = 15;
+        private int lastImpactDelta = int.MinValue;
+        private string positiveImpactGlyph = "▲";
+        private string negativeImpactGlyph = "▼";
+        private Color positiveImpactColor = new Color32(0xD9, 0xC2, 0x8B, 0xFF);
+        private Color negativeImpactColor = new Color32(0xF2, 0xE7, 0xCF, 0xFF);
 
         public StatType Stat => stat;
 
@@ -44,6 +56,12 @@ namespace RoyalDecisions.Presentation
         public bool IsAnimating => animating;
 
         public GraphicFallbackMode IconMode { get; private set; } = GraphicFallbackMode.HideGraphic;
+
+        public string DisplayedValue => valueText != null ? valueText.text : string.Empty;
+
+        public string ImpactText => impactLabel != null ? impactLabel.text : string.Empty;
+
+        public bool IsCritical => criticalLabel != null && criticalLabel.gameObject.activeSelf;
 
         private void Awake()
         {
@@ -83,9 +101,130 @@ namespace RoyalDecisions.Presentation
             }
         }
 
+        public void SetValue(int value, bool animated = false)
+        {
+            if (valueText != null)
+            {
+                valueText.SetText("{0}", value);
+            }
+
+            if (criticalLabel != null)
+            {
+                criticalLabel.gameObject.SetActive(
+                    value <= criticalBoundary || value >= StatBounds.Max - criticalBoundary);
+            }
+
+            if (animated)
+            {
+                SetFillAnimated(StatDisplayMath.ToFill(value));
+            }
+            else
+            {
+                SetFill(StatDisplayMath.ToFill(value));
+            }
+        }
+
+        public void ShowImpact(int delta, float strength)
+        {
+            int level = ChoiceImpactMath.MagnitudeLevel(delta);
+            if (impactLabel != null && delta != lastImpactDelta)
+            {
+                impactLabel.text = ChoiceImpactMath.Format(
+                    delta, positiveImpactGlyph, negativeImpactGlyph);
+                impactLabel.color = delta >= 0 ? positiveImpactColor : negativeImpactColor;
+            }
+
+            lastImpactDelta = delta;
+            if (impactGroup != null)
+            {
+                impactGroup.alpha = level == 0 ? 0f : Mathf.Clamp01(strength);
+            }
+
+            if (impactLabel != null)
+            {
+                impactLabel.gameObject.SetActive(level > 0);
+            }
+        }
+
+        public void ClearImpact()
+        {
+            lastImpactDelta = int.MinValue;
+            if (impactLabel != null)
+            {
+                impactLabel.text = string.Empty;
+                impactLabel.gameObject.SetActive(false);
+            }
+
+            if (impactGroup != null)
+            {
+                impactGroup.alpha = 0f;
+            }
+        }
+
+        public void ApplyTheme(GameUITheme theme)
+        {
+            if (theme == null)
+            {
+                return;
+            }
+
+            iconSprite = theme.GetStatIcon(stat);
+            criticalBoundary = theme.CriticalBoundary;
+            positiveImpactGlyph = theme.PositiveImpactGlyph;
+            negativeImpactGlyph = theme.NegativeImpactGlyph;
+            positiveImpactColor = theme.HighlightGold;
+            negativeImpactColor = theme.PrimaryText;
+
+            if (fillImage != null)
+            {
+                fillImage.color = theme.GetStatColor(stat);
+            }
+
+            if (label == null || string.IsNullOrEmpty(label.text))
+            {
+                SetLabel(theme.GetStatName(stat));
+            }
+
+            ConfigureText(label, theme.PrimaryText, theme.BodyFont);
+            ConfigureText(valueText, theme.PrimaryText, theme.BodyFont);
+            ConfigureText(iconFallbackLabel, theme.PrimaryText, theme.TitleFont);
+            ConfigureText(criticalLabel, theme.HighlightGold, theme.TitleFont);
+
+            bool hasIcon = iconSprite != null;
+            if (iconImage != null)
+            {
+                iconImage.sprite = iconSprite;
+                iconImage.color = theme.PrimaryText;
+                iconImage.raycastTarget = false;
+                iconImage.enabled = hasIcon;
+            }
+
+            IconMode = hasIcon ? GraphicFallbackMode.UseSource : GraphicFallbackMode.HideGraphic;
+            if (iconFallbackLabel != null)
+            {
+                iconFallbackLabel.text = theme.GetStatFallbackSymbol(stat);
+                iconFallbackLabel.gameObject.SetActive(!hasIcon);
+            }
+        }
+
         public void RefreshIcon()
         {
             IconMode = GraphicFallback.Apply(iconImage, iconSprite, iconFallback);
+        }
+
+        private static void ConfigureText(TMP_Text target, Color color, TMP_FontAsset font)
+        {
+            if (target == null)
+            {
+                return;
+            }
+
+            target.color = color;
+            target.raycastTarget = false;
+            if (font != null)
+            {
+                target.font = font;
+            }
         }
 
         private void Update()
@@ -124,12 +263,22 @@ namespace RoyalDecisions.Presentation
             TMP_Text statLabel = null,
             Sprite sprite = null,
             GraphicFallbackSettings fallback = null,
-            float speed = 2.5f)
+            float speed = 2.5f,
+            TMP_Text statValue = null,
+            TMP_Text fallbackLabel = null,
+            TMP_Text impact = null,
+            CanvasGroup impactCanvasGroup = null,
+            TMP_Text critical = null)
         {
             stat = statType;
             fillImage = fill;
             iconImage = icon;
             label = statLabel;
+            valueText = statValue;
+            iconFallbackLabel = fallbackLabel;
+            impactLabel = impact;
+            impactGroup = impactCanvasGroup;
+            criticalLabel = critical;
             iconSprite = sprite;
             animationSpeed = speed;
 

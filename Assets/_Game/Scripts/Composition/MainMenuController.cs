@@ -1,6 +1,9 @@
 using RoyalDecisions.Application;
 using RoyalDecisions.Infrastructure;
+using RoyalDecisions.Data;
+using RoyalDecisions.Presentation;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace RoyalDecisions.Composition
 {
@@ -22,6 +25,11 @@ namespace RoyalDecisions.Composition
 
         [Header("Wiring")]
         [SerializeField] private SessionIntent sessionIntent;
+
+        [Tooltip("Optional. Kept in sync with IsContinueAvailable when assigned.")]
+        [SerializeField] private Button continueButton;
+        [SerializeField] private InterfaceTextDefinition interfaceText;
+        [SerializeField] private MainMenuTextView mainMenuTextView;
 
         private ISceneLoader sceneLoader;
         private IRunSaveStore runStore;
@@ -62,6 +70,7 @@ namespace RoyalDecisions.Composition
 
             if (runStore == null || !runStore.HasSave())
             {
+                ApplyContinueAvailability();
                 return;
             }
 
@@ -70,16 +79,23 @@ namespace RoyalDecisions.Composition
             if (outcome.Succeeded && outcome.HasRun)
             {
                 IsContinueAvailable = true;
+                ApplyContinueAvailability();
                 return;
             }
 
             SaveProblem = outcome.Status == RunLoadStatus.UnsupportedVersion
                 ? SessionError.Terminal(
                     SessionErrorCode.UnsupportedSave,
-                    "This save was made by a newer version of the game.")
+                    interfaceText != null
+                        ? interfaceText.UnsupportedSave
+                        : "This save was made by a newer version of the game.")
                 : SessionError.Terminal(
                     SessionErrorCode.CorruptSave,
-                    "This save could not be read.");
+                    interfaceText != null
+                        ? interfaceText.CorruptSave
+                        : "This save could not be read.");
+
+            ApplyContinueAvailability();
         }
 
         /// <summary>Wire a Button's OnClick to this.</summary>
@@ -104,6 +120,16 @@ namespace RoyalDecisions.Composition
         private void LoadGameScene()
         {
             sceneLoader?.LoadScene(gameSceneName);
+        }
+
+        private void ApplyContinueAvailability()
+        {
+            if (continueButton != null)
+            {
+                continueButton.interactable = IsContinueAvailable;
+            }
+
+            mainMenuTextView?.SetSaveError(SaveProblem.HasError ? SaveProblem.Message : string.Empty);
         }
     }
 }

@@ -28,6 +28,17 @@ namespace RoyalDecisions.Presentation
         [SerializeField] private Image portraitImage;
         [SerializeField] private GraphicFallbackSettings portraitFallback = new GraphicFallbackSettings();
 
+        [Header("Theme surfaces")]
+        [SerializeField] private Image surfaceImage;
+        [SerializeField] private Outline borderOutline;
+        [SerializeField] private Image frameImage;
+        [SerializeField] private Image portraitFrameImage;
+        [SerializeField] private Image portraitMaskImage;
+        [SerializeField] private Image[] cornerImages = System.Array.Empty<Image>();
+        [SerializeField] private GameObject nextCardRoot;
+        [SerializeField] private Image nextCardSurface;
+        [SerializeField] private Image nextCardFrame;
+
         [Header("Choice previews")]
         [SerializeField] private ChoicePreviewView leftPreview;
         [SerializeField] private ChoicePreviewView rightPreview;
@@ -81,6 +92,46 @@ namespace RoyalDecisions.Presentation
             SetChoicePreviews(0f, 0f);
         }
 
+        public void ApplyTheme(GameUITheme theme)
+        {
+            if (theme == null)
+            {
+                return;
+            }
+
+            if (surfaceImage != null)
+            {
+                surfaceImage.color = theme.CardSurface;
+            }
+
+            if (borderOutline != null)
+            {
+                borderOutline.effectColor = theme.BorderGold;
+                borderOutline.enabled = theme.CardFrameSprite == null;
+            }
+
+            ConfigureOptional(frameImage, theme.CardFrameSprite, theme.BorderGold);
+            ConfigureOptional(portraitFrameImage, theme.PortraitFrameSprite, theme.BorderGold, true);
+            ConfigureOptional(portraitMaskImage, theme.PortraitMaskSprite, Color.white, true);
+            ConfigureOptional(nextCardFrame, theme.NextCardFrameSprite, theme.BorderGold);
+
+            if (nextCardSurface != null)
+            {
+                nextCardSurface.color = theme.CardSurface;
+                nextCardSurface.raycastTarget = false;
+            }
+
+            for (int i = 0; i < cornerImages.Length; i++)
+            {
+                ConfigureOptional(cornerImages[i], theme.CornerDecorationSprite, theme.BorderGold);
+            }
+
+            ConfigureText(speakerText, theme.HighlightGold, theme.TitleFont);
+            ConfigureText(bodyText, theme.PrimaryText, theme.BodyFont);
+            leftPreview?.ApplyTheme(theme);
+            rightPreview?.ApplyTheme(theme);
+        }
+
         public float GetChoicePreviewStrength(ChoiceSide side)
         {
             ChoicePreviewView preview = side == ChoiceSide.Left ? leftPreview : rightPreview;
@@ -115,6 +166,45 @@ namespace RoyalDecisions.Presentation
         {
             GameObject root = visualRoot != null ? visualRoot : gameObject;
             root.SetActive(visible);
+            if (nextCardRoot != null)
+            {
+                nextCardRoot.SetActive(visible);
+            }
+        }
+
+        private static void ConfigureOptional(
+            Image image,
+            Sprite sprite,
+            Color color,
+            bool enabledWithoutSprite = false)
+        {
+            if (image == null)
+            {
+                return;
+            }
+
+            if (sprite != null || !enabledWithoutSprite)
+            {
+                image.sprite = sprite;
+            }
+            image.color = color;
+            image.raycastTarget = false;
+            image.enabled = sprite != null || enabledWithoutSprite;
+        }
+
+        private static void ConfigureText(TMP_Text text, Color color, TMP_FontAsset font)
+        {
+            if (text == null)
+            {
+                return;
+            }
+
+            text.color = color;
+            text.raycastTarget = false;
+            if (font != null)
+            {
+                text.font = font;
+            }
         }
 
         private static void SetText(TMP_Text target, string value)
@@ -134,7 +224,16 @@ namespace RoyalDecisions.Presentation
             ChoicePreviewView left,
             ChoicePreviewView right,
             GraphicFallbackSettings fallback = null,
-            GameObject root = null)
+            GameObject root = null,
+            Image surface = null,
+            Outline outline = null,
+            Image frame = null,
+            Image portraitFrame = null,
+            Image portraitMask = null,
+            Image[] corners = null,
+            GameObject queuedCard = null,
+            Image queuedSurface = null,
+            Image queuedFrame = null)
         {
             speakerText = speaker;
             bodyText = body;
@@ -148,6 +247,15 @@ namespace RoyalDecisions.Presentation
             }
 
             visualRoot = root;
+            surfaceImage = surface;
+            borderOutline = outline;
+            frameImage = frame;
+            portraitFrameImage = portraitFrame;
+            portraitMaskImage = portraitMask;
+            cornerImages = corners ?? System.Array.Empty<Image>();
+            nextCardRoot = queuedCard;
+            nextCardSurface = queuedSurface;
+            nextCardFrame = queuedFrame;
         }
 #endif
     }

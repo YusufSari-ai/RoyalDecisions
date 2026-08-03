@@ -65,6 +65,12 @@ namespace RoyalDecisions.Presentation
         /// <summary>Raised once the card has finished leaving the screen.</summary>
         public event Action<ChoiceSide> ExitAnimationCompleted;
 
+        /// <summary>Reports the active drag side and normalized visual strength.</summary>
+        public event Action<ChoiceSide, float> ChoicePreviewChanged;
+
+        /// <summary>Reports that no choice-impact preview should remain visible.</summary>
+        public event Action ChoicePreviewCleared;
+
         private int activePointerId = NoPointer;
         private Vector2 pressLocalPoint;
         private Vector2 initialAnchoredPosition;
@@ -73,6 +79,7 @@ namespace RoyalDecisions.Presentation
         private float currentDisplacement;
         private Coroutine runningAnimation;
         private ChoiceSide? confirmedSide;
+        private bool hasPublishedChoicePreview;
 
         public CardSwipeState State { get; private set; } = CardSwipeState.Idle;
 
@@ -243,6 +250,8 @@ namespace RoyalDecisions.Presentation
                     side == ChoiceSide.Right ? 1f : 0f);
             }
 
+            ClearPublishedChoicePreview();
+
             DecisionConfirmed?.Invoke(side);
 
             // A handler may have reset or disabled us; do not start an exit we no longer own.
@@ -294,9 +303,10 @@ namespace RoyalDecisions.Presentation
 
                 if (cardView != null)
                 {
-                    cardView.SetChoicePreviews(
-                        Mathf.Lerp(startLeft, 0f, t),
-                        Mathf.Lerp(startRight, 0f, t));
+                    float left = Mathf.Lerp(startLeft, 0f, t);
+                    float right = Mathf.Lerp(startRight, 0f, t);
+                    cardView.SetChoicePreviews(left, right);
+                    PublishChoicePreview(left, right);
                 }
 
                 yield return null;
@@ -426,6 +436,8 @@ namespace RoyalDecisions.Presentation
             {
                 cardView.SetChoicePreviews(left, right);
             }
+
+            PublishChoicePreview(left, right);
         }
 
         private void RestoreNeutral()
@@ -441,6 +453,34 @@ namespace RoyalDecisions.Presentation
             {
                 cardView.ClearChoicePreviews();
             }
+
+            ClearPublishedChoicePreview();
+        }
+
+        private void PublishChoicePreview(float left, float right)
+        {
+            float strength = Mathf.Max(left, right);
+            if (strength <= 0f)
+            {
+                ClearPublishedChoicePreview();
+                return;
+            }
+
+            hasPublishedChoicePreview = true;
+            ChoicePreviewChanged?.Invoke(
+                left > right ? ChoiceSide.Left : ChoiceSide.Right,
+                Mathf.Clamp01(strength));
+        }
+
+        private void ClearPublishedChoicePreview()
+        {
+            if (!hasPublishedChoicePreview)
+            {
+                return;
+            }
+
+            hasPublishedChoicePreview = false;
+            ChoicePreviewCleared?.Invoke();
         }
 
         private float PreviewStrength(ChoiceSide side)

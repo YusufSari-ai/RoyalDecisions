@@ -19,21 +19,28 @@ namespace RoyalDecisions.Composition
         private readonly HUDView hudView;
         private readonly GameOverView gameOverView;
         private readonly CardSwipeController swipeController;
+        private readonly RunStatusView runStatusView;
+        private readonly FooterView footerView;
 
         public UnityGamePresenter(
             CardView cardView,
             HUDView hudView,
             GameOverView gameOverView,
-            CardSwipeController swipeController)
+            CardSwipeController swipeController,
+            RunStatusView runStatusView = null,
+            FooterView footerView = null)
         {
             this.cardView = cardView;
             this.hudView = hudView;
             this.gameOverView = gameOverView;
             this.swipeController = swipeController;
+            this.runStatusView = runStatusView;
+            this.footerView = footerView;
         }
 
         public void ShowCard(CardDefinition card)
         {
+            hudView?.ClearChoiceImpact();
             if (cardView != null)
             {
                 cardView.Show(card);
@@ -42,6 +49,7 @@ namespace RoyalDecisions.Composition
 
         public void ClearCard()
         {
+            hudView?.ClearChoiceImpact();
             if (cardView != null)
             {
                 cardView.Clear();
@@ -50,6 +58,7 @@ namespace RoyalDecisions.Composition
 
         public void PrepareForInput()
         {
+            hudView?.ClearChoiceImpact();
             if (swipeController != null)
             {
                 swipeController.ResetForNextCard();
@@ -58,6 +67,7 @@ namespace RoyalDecisions.Composition
 
         public void CancelInput()
         {
+            hudView?.ClearChoiceImpact();
             if (swipeController != null)
             {
                 swipeController.CancelInteraction();
@@ -74,6 +84,7 @@ namespace RoyalDecisions.Composition
 
         public void UnbindStats()
         {
+            hudView?.ClearChoiceImpact();
             if (hudView != null)
             {
                 hudView.Unbind();
@@ -88,8 +99,19 @@ namespace RoyalDecisions.Composition
             }
         }
 
+        public void ShowTurn(int oneBasedTurn)
+        {
+            if (runStatusView != null)
+            {
+                runStatusView.ShowTurn(oneBasedTurn);
+            }
+
+            footerView?.ShowTurn(oneBasedTurn);
+        }
+
         public void ShowGameOver(GameOverResult result)
         {
+            hudView?.ClearChoiceImpact();
             if (gameOverView != null)
             {
                 gameOverView.Show(result);
@@ -98,6 +120,7 @@ namespace RoyalDecisions.Composition
 
         public void HideGameOver()
         {
+            hudView?.ClearChoiceImpact();
             if (gameOverView != null)
             {
                 gameOverView.Hide();

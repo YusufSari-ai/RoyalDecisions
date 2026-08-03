@@ -400,6 +400,7 @@ namespace RoyalDecisions.Application
             // Armed before input is enabled: this is the token the domain's duplicate guard reads.
             runState.SetCurrentCardId(currentCard.Id);
 
+            presenter.ShowTurn(runState.Turn + 1);
             presenter.ShowCard(currentCard);
             presenter.PrepareForInput();
 

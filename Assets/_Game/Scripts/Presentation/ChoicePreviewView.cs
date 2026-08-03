@@ -1,6 +1,7 @@
 using RoyalDecisions.Data;
 using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace RoyalDecisions.Presentation
 {
@@ -16,6 +17,8 @@ namespace RoyalDecisions.Presentation
         [SerializeField] private ChoiceSide side = ChoiceSide.Left;
         [SerializeField] private TMP_Text label;
         [SerializeField] private CanvasGroup canvasGroup;
+        [SerializeField] private Image edgeHighlight;
+        [SerializeField] private CanvasGroup commitMarker;
 
         [Range(0f, 1f)]
         [SerializeField] private float maxAlpha = 1f;
@@ -50,6 +53,11 @@ namespace RoyalDecisions.Presentation
                 canvasGroup.alpha = Strength * maxAlpha;
             }
 
+            if (commitMarker != null)
+            {
+                commitMarker.alpha = Strength >= 0.999f ? 1f : 0f;
+            }
+
             if (scaleWithStrength)
             {
                 transform.localScale = Vector3.one * Mathf.Lerp(minScale, maxScale, Strength);
@@ -62,13 +70,49 @@ namespace RoyalDecisions.Presentation
             SetStrength(0f);
         }
 
+        public void ApplyTheme(GameUITheme theme)
+        {
+            if (theme == null)
+            {
+                return;
+            }
+
+            if (label != null)
+            {
+                label.color = theme.PrimaryText;
+                label.raycastTarget = false;
+                if (theme.BodyFont != null)
+                {
+                    label.font = theme.BodyFont;
+                }
+            }
+
+            if (edgeHighlight != null)
+            {
+                edgeHighlight.sprite = side == ChoiceSide.Left
+                    ? theme.LeftEdgeSprite
+                    : theme.RightEdgeSprite;
+                edgeHighlight.color = side == ChoiceSide.Left
+                    ? theme.LeftChoice
+                    : theme.RightChoice;
+                edgeHighlight.raycastTarget = false;
+            }
+        }
+
 #if UNITY_EDITOR
         /// <summary>Editor-only wiring hook so tests and prefab setup share one path.</summary>
-        public void SetAuthoringReferences(ChoiceSide previewSide, TMP_Text previewLabel, CanvasGroup group)
+        public void SetAuthoringReferences(
+            ChoiceSide previewSide,
+            TMP_Text previewLabel,
+            CanvasGroup group,
+            Image edge = null,
+            CanvasGroup thresholdMarker = null)
         {
             side = previewSide;
             label = previewLabel;
             canvasGroup = group;
+            edgeHighlight = edge;
+            commitMarker = thresholdMarker;
         }
 #endif
     }

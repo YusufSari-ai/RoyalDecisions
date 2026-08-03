@@ -482,3 +482,96 @@ stop running the generator, or delete the `Placeholder` folder and author conten
 `Assets/_Game/Content/`. Nothing in the gameplay code refers to any placeholder ID — the only
 content reference the game needs is a `ContentCatalogue`, which Phase 7 will take as an Inspector
 reference.
+
+---
+
+## Phase F — Turkish localization and readability
+
+Phase F has been applied through the guarded Unity Editor generators and scene automation. It did
+not add a localization package or change the save format. Turkish is the only active MVP language.
+
+Generated project-owned assets:
+
+- `Assets/_Game/Content/Interface/TurkishInterfaceText.asset`
+- `Assets/_Game/Art/Fonts/Resources/LiberationSans-Turkish.ttf`
+- `Assets/_Game/Art/Fonts/Resources/LiberationSans-Turkish SDF.asset`
+- `Assets/_Game/Art/Fonts/Resources/LiberationSans-Turkish-OFL.txt`
+
+The 20 placeholder cards and eight endings now contain Turkish display text and retain their
+existing IDs, gameplay data, paths, `.meta` files and GUIDs. The catalogue was not rewritten.
+Do not edit `Assets/TextMesh Pro/Resources/Fonts & Materials/LiberationSans SDF - Fallback.asset`;
+the Turkish scenes use the separate project-owned static SDF directly.
+
+Useful regeneration and validation commands:
+
+- `Tools > Royal Decisions > Generate Turkish Interface Text`
+- `Tools > Royal Decisions > Generate Turkish TMP Font` (generates and validates)
+- `Tools > Royal Decisions > Generate Placeholder Content`
+- `Tools > Royal Decisions > Scene Setup > Apply Remaining Setup`
+
+The exact font probe is `Çığ, öğüt, şüphe, İmparator, özgürlük ve güvenlik`. A failed glyph check
+must be fixed in the project-owned SDF; do not mask it with TMP fallback substitution.
+
+Automated verification completed on 3 August 2026:
+
+- EditMode: **693/693 passed** — `Logs/PhaseFFullEditMode.xml`
+- PlayMode: **38/38 passed** — `Logs/UIFoundationFullPlayModeFinal.xml`
+- Scene authoring: **5/5 passed** — `Logs/PhaseFSceneTests.xml`
+- Focused Turkish layout PlayMode: **2/2 passed** — `Logs/PhaseFFocusedPlayMode.xml`
+
+### Phase F visual review in Unity
+
+- [ ] At 1080×1920, verify four- and six-line dialogue stays at or above 34 px and does not
+      overflow; the dialogue remains the card's most prominent text.
+- [ ] Verify a two-line speaker name and two-/three-line choices do not clip.
+- [ ] Drag to both decision thresholds and confirm card text, previews and contrast remain readable.
+- [ ] Verify HUD labels and values at 0, 50 and 100 do not collide and their fills agree.
+- [ ] Verify the first card displays `Tur 1`, then increments once per completed decision.
+- [ ] Verify the menu reads `Yeni Oyun` / `Devam Et`, and game over reads
+      `Hükümdarlık Sona Erdi` / `Yeniden Başlat` where fallback text is used.
+- [ ] Inspect `Ç Ğ İ Ö Ş Ü ç ğ ı i ö ş ü`, especially dotted and dotless I, at device scale.
+- [ ] Confirm no approved narrative or ending text is silently truncated.
+
+Phase F recovery copies are under
+`Library/RoyalDecisionsPhaseFBackup/20260802-215404/`. The last scene-automation backup is under
+`Library/RoyalDecisionsSceneSetupBackup/Last/`. Restore only the Phase F targets from these folders;
+do not reset or delete unrelated working-tree changes.
+
+---
+
+## Phase 8 — Android device acceptance
+
+Android SDK, NDK and OpenJDK modules are installed. The application identifier and device
+acceptance remain manual and are the only unfinished release gates.
+
+### A1 — Player and build settings
+
+- [ ] Set a real Company Name and enable Android `Override Default Package Name` with a stable
+      identifier such as `com.yusufsari.royaldecisions`.
+- [ ] Set `Default Orientation` to **Portrait** and disable both landscape orientations.
+- [ ] Switch the active Build Profile to Android and include `Bootstrap`, `MainMenu`, and `Game` in
+      that order.
+- [ ] Make a development build and confirm the Unity Console contains no project-code warnings or
+      errors.
+
+### A2 — Supported layouts and Safe Area
+
+- [ ] Check 1080×1920, 1080×2340, 1440×2960 and 1536×2048 in Device Simulator or on matching
+      devices.
+- [ ] Simulate a top notch and bottom gesture inset; every active text element must remain inside
+      `SafeArea`.
+- [ ] Confirm card rotation at both maximum directions keeps text aligned with the card through the
+      confirmation threshold. Leaving the Safe Area during the intentional exit animation is valid.
+
+### A3 — Touch, save and Turkish smoke test
+
+- [ ] Start `Yeni Oyun`; the opening card appears with `Tur 1`.
+- [ ] Perform one below-threshold swipe: snap-back occurs and no decision or save is recorded.
+- [ ] Perform one above-threshold touch swipe: exactly one decision is applied and saved.
+- [ ] Try a rapid repeat and a second finger: neither produces a duplicate decision.
+- [ ] Background and resume the app, then use `Devam Et`; the same run and turn return.
+- [ ] Reach an ending, verify the full Turkish title/body, then use `Yeniden Başlat`.
+- [ ] Recheck the Turkish glyph probe on the physical device and confirm all text is readable.
+- [ ] Finish with a clean Unity Console and no Android log errors from project code.
+
+The MVP is not device-accepted until every A1–A3 item is complete on an Android device.

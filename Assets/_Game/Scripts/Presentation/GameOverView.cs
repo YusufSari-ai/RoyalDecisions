@@ -1,4 +1,5 @@
 using System;
+using RoyalDecisions.Data;
 using RoyalDecisions.Domain;
 using TMPro;
 using UnityEngine;
@@ -28,6 +29,7 @@ namespace RoyalDecisions.Presentation
         [SerializeField] private TMP_Text bodyText;
         [SerializeField] private Image illustrationImage;
         [SerializeField] private GraphicFallbackSettings illustrationFallback = new GraphicFallbackSettings();
+        [SerializeField] private InterfaceTextDefinition interfaceText;
 
         [Header("Missing-ending fallback")]
         [Tooltip("Shown when a boundary is reached that no ending asset covers.")]
@@ -39,6 +41,8 @@ namespace RoyalDecisions.Presentation
 
         [Header("Optional")]
         [SerializeField] private Button restartButton;
+        [SerializeField] private TMP_Text restartButtonText;
+        [SerializeField] private Image panelImage;
 
         /// <summary>Raised when the player presses restart. The view takes no other action.</summary>
         public event Action RestartRequested;
@@ -51,7 +55,9 @@ namespace RoyalDecisions.Presentation
 
         public void Show(GameOverResult result)
         {
-            Show(GameOverPresenter.Create(result, genericTitle, genericBody));
+            string fallbackTitle = interfaceText != null ? interfaceText.GameOverTitle : genericTitle;
+            string fallbackBody = interfaceText != null ? interfaceText.GameOverBody : genericBody;
+            Show(GameOverPresenter.Create(result, fallbackTitle, fallbackBody));
         }
 
         public void Show(GameOverPresentation presentation)
@@ -69,6 +75,10 @@ namespace RoyalDecisions.Presentation
                 illustrationImage, presentation.Illustration, illustrationFallback);
 
             IsShowingGenericFallback = presentation.IsGenericFallback;
+            if (interfaceText != null)
+            {
+                SetText(restartButtonText, interfaceText.Restart);
+            }
             SetVisible(true);
         }
 
@@ -91,6 +101,25 @@ namespace RoyalDecisions.Presentation
             }
         }
 
+        public void ApplyTheme(GameUITheme theme)
+        {
+            if (theme == null)
+            {
+                return;
+            }
+
+            if (panelImage != null)
+            {
+                Color background = theme.OverallBackground;
+                panelImage.color = new Color(background.r, background.g, background.b, 0.96f);
+                panelImage.raycastTarget = true;
+            }
+
+            ConfigureText(titleText, theme.HighlightGold, theme.TitleFont);
+            ConfigureText(bodyText, theme.PrimaryText, theme.BodyFont);
+            ConfigureText(restartButtonText, theme.PrimaryText, theme.BodyFont);
+        }
+
         private void SetVisible(bool visible)
         {
             IsVisible = visible;
@@ -107,6 +136,21 @@ namespace RoyalDecisions.Presentation
             }
         }
 
+        private static void ConfigureText(TMP_Text target, Color color, TMP_FontAsset font)
+        {
+            if (target == null)
+            {
+                return;
+            }
+
+            target.color = color;
+            target.raycastTarget = false;
+            if (font != null)
+            {
+                target.font = font;
+            }
+        }
+
 #if UNITY_EDITOR
         /// <summary>Editor-only wiring hook shared by prefab setup and tests.</summary>
         public void SetAuthoringReferences(
@@ -116,12 +160,20 @@ namespace RoyalDecisions.Presentation
             GameObject root = null,
             GraphicFallbackSettings fallback = null,
             string fallbackTitle = null,
-            string fallbackBody = null)
+            string fallbackBody = null,
+            InterfaceTextDefinition text = null,
+            TMP_Text restartLabel = null,
+            Button restart = null,
+            Image panel = null)
         {
             titleText = title;
             bodyText = body;
             illustrationImage = illustration;
             panelRoot = root;
+            interfaceText = text;
+            restartButtonText = restartLabel;
+            restartButton = restart;
+            panelImage = panel;
 
             if (fallback != null)
             {
