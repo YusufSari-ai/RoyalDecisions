@@ -115,6 +115,25 @@ namespace RoyalDecisions.Tests.EditMode
         }
 
         [Test]
+        public void OlderVersionOneJsonLoadsAdditiveSettingsDefaults()
+        {
+            fileSystem.Seed(paths.SettingsSavePath,
+                "{\"saveVersion\":1,\"settings\":{\"musicVolume\":0.25,"
+                + "\"sfxVolume\":0.75,\"hapticsEnabled\":true}}");
+
+            GameSettings loaded = service.Load();
+
+            Assert.That(loaded.MusicVolume, Is.EqualTo(0.25f));
+            Assert.That(loaded.SfxVolume, Is.EqualTo(0.75f));
+            Assert.That(loaded.MasterMuted, Is.False);
+            Assert.That(loaded.ReducedMotion, Is.False);
+            Assert.That(loaded.LargerText, Is.False);
+            Assert.That(loaded.HighContrast, Is.False);
+            Assert.That(loaded.TutorialCompleted, Is.False);
+            Assert.That(SettingsSaveService.CurrentSettingsVersion, Is.EqualTo(1));
+        }
+
+        [Test]
         public void CorruptSettings_RecoverFromTheBackup()
         {
             service.Save(CustomSettings());

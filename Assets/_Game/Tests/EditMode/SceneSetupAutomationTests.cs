@@ -4,6 +4,7 @@ using RoyalDecisions.Editor;
 using RoyalDecisions.Presentation;
 using TMPro;
 using UnityEditor;
+using UnityEditor.Events;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -155,8 +156,8 @@ namespace RoyalDecisions.Tests.EditMode
             Assert.That(body.rectTransform.anchorMax, Is.EqualTo(new Vector2(0.91f, 0.42f)));
             Assert.That(body.font, Is.SameAs(font));
             Assert.That(body.enableAutoSizing, Is.True);
-            Assert.That(body.fontSizeMin, Is.EqualTo(32f));
-            Assert.That(body.fontSizeMax, Is.EqualTo(44f));
+            Assert.That(body.fontSizeMin, Is.EqualTo(34f));
+            Assert.That(body.fontSizeMax, Is.EqualTo(46f));
             Assert.That(body.textWrappingMode, Is.EqualTo(TextWrappingModes.Normal));
             Assert.That(body.overflowMode, Is.EqualTo(TextOverflowModes.Ellipsis));
 
@@ -165,10 +166,10 @@ namespace RoyalDecisions.Tests.EditMode
             TextMeshProUGUI leftChoice = Find(
                     "/UICanvas/SafeArea/CardArea/Card/PreviewLeft/Label")
                 .GetComponent<TextMeshProUGUI>();
-            Assert.That(speaker.fontSizeMin, Is.EqualTo(26f));
-            Assert.That(speaker.fontSizeMax, Is.EqualTo(36f));
-            Assert.That(leftChoice.fontSizeMin, Is.EqualTo(24f));
-            Assert.That(leftChoice.fontSizeMax, Is.EqualTo(32f));
+            Assert.That(speaker.fontSizeMin, Is.EqualTo(28f));
+            Assert.That(speaker.fontSizeMax, Is.EqualTo(38f));
+            Assert.That(leftChoice.fontSizeMin, Is.EqualTo(26f));
+            Assert.That(leftChoice.fontSizeMax, Is.EqualTo(34f));
             Assert.That(speaker.font, Is.SameAs(font));
             Assert.That(leftChoice.font, Is.SameAs(font));
 
@@ -220,6 +221,131 @@ namespace RoyalDecisions.Tests.EditMode
             SceneSetupReport validation = SceneSetupAutomation.ValidateGameSceneForTests(
                 scene, catalogue, intent);
             Assert.That(validation.ErrorCount, Is.Zero, JoinIssues(validation));
+        }
+
+        [Test]
+        public void InactiveUnreferencedLegacyGameOverChild_IsRemoved()
+        {
+            SceneSetupReport initial = SceneSetupAutomation.ApplyGameSceneForTests(
+                scene, catalogue, intent);
+            Assert.That(initial.ErrorCount, Is.Zero, JoinIssues(initial));
+
+            Transform panel = Find("/UICanvas/SafeArea/GameOverPanel").transform;
+            GameObject legacy = new GameObject(
+                "Illustration", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            legacy.transform.SetParent(panel, false);
+            legacy.SetActive(false);
+
+            SceneSetupReport repaired = SceneSetupAutomation.ApplyGameSceneForTests(
+                scene, catalogue, intent);
+
+            Assert.That(repaired.ErrorCount, Is.Zero, JoinIssues(repaired));
+            Assert.That(panel.Find("Illustration"), Is.Null);
+            Assert.That(panel.Find("Content/Illustration"), Is.Not.Null);
+        }
+
+        [Test]
+        public void InactiveLegacyRestartButton_WithExactManagedDuplicateListener_IsRemoved()
+        {
+            SceneSetupReport initial = SceneSetupAutomation.ApplyGameSceneForTests(
+                scene, catalogue, intent);
+            Assert.That(initial.ErrorCount, Is.Zero, JoinIssues(initial));
+
+            Transform panel = Find("/UICanvas/SafeArea/GameOverPanel").transform;
+            GameOverView view = panel.GetComponent<GameOverView>();
+            GameObject legacy = new GameObject(
+                "RestartButton", typeof(RectTransform), typeof(CanvasRenderer),
+                typeof(Image), typeof(Button));
+            legacy.transform.SetParent(panel, false);
+            legacy.SetActive(false);
+            UnityEventTools.AddPersistentListener(
+                legacy.GetComponent<Button>().onClick, view.HandleRestartButton);
+
+            SceneSetupReport repaired = SceneSetupAutomation.ApplyGameSceneForTests(
+                scene, catalogue, intent);
+
+            Assert.That(repaired.ErrorCount, Is.Zero, JoinIssues(repaired));
+            Assert.That(panel.Find("RestartButton"), Is.Null);
+            Assert.That(panel.Find("Content/RestartButton"), Is.Not.Null);
+        }
+
+        [Test]
+        public void InactiveLegacyRestartButton_WithUnexpectedListener_BlocksAndIsPreserved()
+        {
+            SceneSetupReport initial = SceneSetupAutomation.ApplyGameSceneForTests(
+                scene, catalogue, intent);
+            Assert.That(initial.ErrorCount, Is.Zero, JoinIssues(initial));
+
+            Transform panel = Find("/UICanvas/SafeArea/GameOverPanel").transform;
+            GameOverView view = panel.GetComponent<GameOverView>();
+            GameObject legacy = new GameObject(
+                "RestartButton", typeof(RectTransform), typeof(CanvasRenderer),
+                typeof(Image), typeof(Button));
+            legacy.transform.SetParent(panel, false);
+            legacy.SetActive(false);
+            UnityEventTools.AddPersistentListener(legacy.GetComponent<Button>().onClick, view.Hide);
+
+            SceneSetupReport blocked = SceneSetupAutomation.ApplyGameSceneForTests(
+                scene, catalogue, intent);
+
+            Assert.That(blocked.ErrorCount, Is.GreaterThan(0));
+            Assert.That(panel.Find("RestartButton"), Is.SameAs(legacy.transform));
+        }
+
+        [Test]
+        public void ActiveLegacyGameOverChild_BlocksAndIsPreserved()
+        {
+            SceneSetupReport initial = SceneSetupAutomation.ApplyGameSceneForTests(
+                scene, catalogue, intent);
+            Assert.That(initial.ErrorCount, Is.Zero, JoinIssues(initial));
+
+            Transform panel = Find("/UICanvas/SafeArea/GameOverPanel").transform;
+            GameObject legacy = new GameObject(
+                "Title", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+            legacy.transform.SetParent(panel, false);
+            legacy.SetActive(true);
+
+            SceneSetupReport blocked = SceneSetupAutomation.ApplyGameSceneForTests(
+                scene, catalogue, intent);
+
+            Assert.That(blocked.ErrorCount, Is.GreaterThan(0));
+            Assert.That(panel.Find("Title"), Is.SameAs(legacy.transform));
+        }
+
+        [Test]
+        public void GeneratedPolish_HasResponsiveCapVignetteBordersAndPortraitFallback()
+        {
+            SceneSetupReport report = SceneSetupAutomation.ApplyGameSceneForTests(
+                scene, catalogue, intent);
+            Assert.That(report.ErrorCount, Is.Zero, JoinIssues(report));
+
+            GameObject cardArea = Find("/UICanvas/SafeArea/CardArea");
+            ResponsiveCardSizer sizer = cardArea.GetComponent<ResponsiveCardSizer>();
+            SerializedObject serializedSizer = new SerializedObject(sizer);
+            Assert.That(serializedSizer.FindProperty("preferredWidthRatio").floatValue,
+                Is.EqualTo(0.78f));
+            Assert.That(serializedSizer.FindProperty("maximumWidth").floatValue,
+                Is.EqualTo(920f));
+            Assert.That(serializedSizer.FindProperty("widthReference").objectReferenceValue,
+                Is.SameAs(Find("/UICanvas/SafeArea").transform));
+
+            ProceduralVignetteGraphic vignette = Find(
+                    "/UICanvas/Background/ProceduralVignette")
+                .GetComponent<ProceduralVignetteGraphic>();
+            Assert.That(vignette.raycastTarget, Is.False);
+            Assert.That(vignette.EdgeWidth, Is.EqualTo(0.22f));
+            Assert.That(vignette.EdgeAlpha, Is.EqualTo(0.42f));
+
+            Assert.That(Find(
+                    "/UICanvas/SafeArea/CardArea/Card/PortraitRegion/PortraitMask/FallbackSilhouette")
+                .GetComponent<PortraitFallbackView>(), Is.Not.Null);
+            string[] edges = { "Top", "Right", "Bottom", "Left" };
+            for (int i = 0; i < edges.Length; i++)
+            {
+                Assert.That(Find(
+                        "/UICanvas/SafeArea/CardArea/Card/TemporaryBorder/" + edges[i])
+                    .GetComponent<Image>().raycastTarget, Is.False);
+            }
         }
 
         private GameObject Find(string path)

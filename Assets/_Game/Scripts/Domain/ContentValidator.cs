@@ -35,19 +35,23 @@ namespace RoyalDecisions.Domain
         public ContentValidationReport Validate(
             IReadOnlyList<CardDefinition> cards,
             IReadOnlyList<EndingDefinition> endings,
-            string openingCardId = null)
+            string openingCardId = null,
+            ContentValidationOptions options = null)
         {
+            options ??= new ContentValidationOptions();
             List<ContentValidationIssue> issues = new List<ContentValidationIssue>();
 
             Dictionary<string, CardDefinition> cardsById =
                 new Dictionary<string, CardDefinition>(StringComparer.Ordinal);
 
-            ValidateCards(cards, issues, cardsById);
+            ValidateCards(cards, issues, cardsById, options);
             ValidateCardOrdering(cards, issues);
             ValidateForcedTargets(cards, cardsById, issues);
             ValidateForcedCycles(cards, cardsById, issues);
             ValidateFlagReachability(cards, issues);
+            ValidateFlagUsage(cards, issues, options);
             ValidateEndings(endings, issues);
+            ValidateOptionalEndingArt(endings, issues, options);
             ValidateOpeningCard(openingCardId, cardsById, issues);
 
             return new ContentValidationReport(issues);
@@ -58,7 +62,8 @@ namespace RoyalDecisions.Domain
         private static void ValidateCards(
             IReadOnlyList<CardDefinition> cards,
             List<ContentValidationIssue> issues,
-            Dictionary<string, CardDefinition> cardsById)
+            Dictionary<string, CardDefinition> cardsById,
+            ContentValidationOptions options)
         {
             if (cards == null)
             {
@@ -104,7 +109,17 @@ namespace RoyalDecisions.Domain
 
                 ValidateChoices(card, issues);
                 ValidateStatRanges(card, issues);
+                ValidateConditionConsistency(card, issues);
                 ValidateCardText(card, issues);
+                ValidateAuthoringBounds(card, issues, options);
+
+                if (options.IncludeInformation && card.Portrait == null)
+                {
+                    issues.Add(ContentValidationIssue.Information(
+                        ContentIssueCode.OptionalPortraitMissing,
+                        id,
+                        "Optional portrait artwork is not assigned."));
+                }
 
                 if (card.OncePerRun && card.HasCooldown)
                 {
@@ -180,6 +195,147 @@ namespace RoyalDecisions.Domain
                             StatBounds.Min,
                             StatBounds.Max)));
                 }
+            }
+        }
+
+        private static void ValidateConditionConsistency(
+            CardDefinition card,
+            List<ContentValidationIssue> issues)
+        {
+            CardConditions conditions = card.Conditions;
+            if (conditions == null)
+            {
+                return;
+            }
+
+            HashSet<string> required = new HashSet<string>(StringComparer.Ordinal);
+            AddDuplicateFindings(
+                conditions.RequiredFlags, required, card.Id, "required flag", issues);
+            HashSet<string> forbidden = new HashSet<string>(StringComparer.Ordinal);
+            AddDuplicateFindings(
+                conditions.ForbiddenFlags, forbidden, card.Id, "forbidden flag", issues);
+            foreach (string flag in required)
+            {
+                if (forbidden.Contains(flag))
+                {
+                    issues.Add(ContentValidationIssue.Error(
+                        ContentIssueCode.ConflictingFlags,
+                        card.Id,
+                        "Flag '" + flag + "' is both required and forbidden."));
+                }
+            }
+
+            Dictionary<StatType, int[]> intersections =
+                new Dictionary<StatType, int[]>();
+            HashSet<string> rangeKeys = new HashSet<string>(StringComparer.Ordinal);
+            IReadOnlyList<StatRange> ranges = conditions.StatRanges;
+            for (int i = 0; i < ranges.Count; i++)
+            {
+                StatRange range = ranges[i];
+                if (range == null)
+                {
+                    continue;
+                }
+                string key = range.Stat + ":" + range.Min + ":" + range.Max;
+                if (!rangeKeys.Add(key))
+                {
+                    issues.Add(ContentValidationIssue.Warning(
+                        ContentIssueCode.DuplicateConditionEntry,
+                        card.Id,
+                        "Duplicate stat range " + key + "."));
+                }
+                int[] current = intersections.TryGetValue(range.Stat, out int[] value)
+                    ? value
+                    : new[] { StatBounds.Min, StatBounds.Max };
+                current[0] = Math.Max(current[0], range.Min);
+                current[1] = Math.Min(current[1], range.Max);
+                intersections[range.Stat] = current;
+            }
+            foreach (KeyValuePair<StatType, int[]> pair in intersections)
+            {
+                if (pair.Value[0] > pair.Value[1])
+                {
+                    issues.Add(ContentValidationIssue.Error(
+                        ContentIssueCode.EmptyStatRangeIntersection,
+                        card.Id,
+                        pair.Key + " ranges have no shared value."));
+                }
+            }
+        }
+
+        private static void AddDuplicateFindings(
+            IReadOnlyList<string> values,
+            HashSet<string> unique,
+            string cardId,
+            string label,
+            List<ContentValidationIssue> issues)
+        {
+            for (int i = 0; i < values.Count; i++)
+            {
+                string value = values[i];
+                if (string.IsNullOrEmpty(value))
+                {
+                    continue;
+                }
+                if (!unique.Add(value))
+                {
+                    issues.Add(ContentValidationIssue.Warning(
+                        ContentIssueCode.DuplicateConditionEntry,
+                        cardId,
+                        "Duplicate " + label + " '" + value + "'."));
+                }
+            }
+        }
+
+        private static void ValidateAuthoringBounds(
+            CardDefinition card,
+            List<ContentValidationIssue> issues,
+            ContentValidationOptions options)
+        {
+            if (card.Speaker.Length > options.MaximumSpeakerLength
+                || card.BodyText.Length > options.MaximumBodyLength)
+            {
+                issues.Add(ContentValidationIssue.Warning(
+                    ContentIssueCode.ExcessiveTextLength,
+                    card.Id,
+                    "Speaker or body text exceeds the configured authoring length."));
+            }
+            ValidateChoiceBounds(card.Id, "left", card.LeftChoice, issues, options);
+            ValidateChoiceBounds(card.Id, "right", card.RightChoice, issues, options);
+        }
+
+        private static void ValidateChoiceBounds(
+            string cardId,
+            string side,
+            ChoiceDefinition choice,
+            List<ContentValidationIssue> issues,
+            ContentValidationOptions options)
+        {
+            if (choice == null)
+            {
+                return;
+            }
+            if (choice.PreviewText.Length > options.MaximumPreviewLength)
+            {
+                issues.Add(ContentValidationIssue.Warning(
+                    ContentIssueCode.ExcessiveTextLength,
+                    cardId,
+                    side + " preview text exceeds the configured authoring length."));
+            }
+            int total = 0;
+            bool singleTooLarge = false;
+            for (int i = 0; i < AllStats.Length; i++)
+            {
+                int magnitude = Math.Abs(choice.Deltas[AllStats[i]]);
+                total += magnitude;
+                singleTooLarge |= magnitude > options.MaximumSingleStatDelta;
+            }
+            if (singleTooLarge || total > options.MaximumTotalAbsoluteDelta)
+            {
+                issues.Add(ContentValidationIssue.Warning(
+                    ContentIssueCode.ExcessiveStatDelta,
+                    cardId,
+                    side + " choice exceeds the configured stat-delta budget."));
             }
         }
 
@@ -470,6 +626,94 @@ namespace RoyalDecisions.Domain
             }
         }
 
+        private static void ValidateFlagUsage(
+            IReadOnlyList<CardDefinition> cards,
+            List<ContentValidationIssue> issues,
+            ContentValidationOptions options)
+        {
+            if (cards == null)
+            {
+                return;
+            }
+            HashSet<string> produced = new HashSet<string>(StringComparer.Ordinal);
+            HashSet<string> removed = new HashSet<string>(StringComparer.Ordinal);
+            HashSet<string> read = new HashSet<string>(StringComparer.Ordinal);
+            for (int i = 0; i < cards.Count; i++)
+            {
+                CardDefinition card = cards[i];
+                if (card == null)
+                {
+                    continue;
+                }
+                CollectFlags(card.LeftChoice, produced, removed);
+                CollectFlags(card.RightChoice, produced, removed);
+                CollectValues(card.Conditions?.RequiredFlags, read);
+                CollectValues(card.Conditions?.ForbiddenFlags, read);
+            }
+            foreach (string flag in removed)
+            {
+                if (!produced.Contains(flag))
+                {
+                    issues.Add(ContentValidationIssue.Warning(
+                        ContentIssueCode.RemovedFlagNeverProduced,
+                        flag,
+                        "Flag is removed by content but no choice produces it."));
+                }
+            }
+            foreach (string flag in read)
+            {
+                if (!produced.Contains(flag))
+                {
+                    issues.Add(ContentValidationIssue.Warning(
+                        ContentIssueCode.FlagReadNeverProduced,
+                        flag,
+                        "Flag is read by a condition but no choice produces it."));
+                }
+            }
+            if (!options.IncludeInformation)
+            {
+                return;
+            }
+            foreach (string flag in produced)
+            {
+                if (!read.Contains(flag))
+                {
+                    issues.Add(ContentValidationIssue.Information(
+                        ContentIssueCode.FlagWrittenNeverRead,
+                        flag,
+                        "Flag is produced but no condition reads it."));
+                }
+            }
+        }
+
+        private static void CollectFlags(
+            ChoiceDefinition choice,
+            HashSet<string> produced,
+            HashSet<string> removed)
+        {
+            if (choice == null)
+            {
+                return;
+            }
+            CollectValues(choice.FlagsToAdd, produced);
+            CollectValues(choice.FlagsToRemove, removed);
+        }
+
+        private static void CollectValues(IReadOnlyList<string> values, HashSet<string> output)
+        {
+            if (values == null)
+            {
+                return;
+            }
+            for (int i = 0; i < values.Count; i++)
+            {
+                if (!string.IsNullOrEmpty(values[i]))
+                {
+                    output.Add(values[i]);
+                }
+            }
+        }
+
         // --- Endings ----------------------------------------------------------------
 
         private static void ValidateEndings(
@@ -550,6 +794,28 @@ namespace RoyalDecisions.Domain
         private static int CoverageKey(StatType stat, StatBoundary boundary)
         {
             return ((int)stat * 2) + (int)boundary;
+        }
+
+        private static void ValidateOptionalEndingArt(
+            IReadOnlyList<EndingDefinition> endings,
+            List<ContentValidationIssue> issues,
+            ContentValidationOptions options)
+        {
+            if (!options.IncludeInformation || endings == null)
+            {
+                return;
+            }
+            for (int i = 0; i < endings.Count; i++)
+            {
+                EndingDefinition ending = endings[i];
+                if (ending != null && ending.Image == null)
+                {
+                    issues.Add(ContentValidationIssue.Information(
+                        ContentIssueCode.OptionalEndingImageMissing,
+                        ending.Id,
+                        "Optional ending artwork is not assigned."));
+                }
+            }
         }
 
         private static void ValidateOpeningCard(

@@ -23,6 +23,10 @@ namespace RoyalDecisions.Presentation
         [SerializeField] private Color emptyBar = new Color32(0x2A, 0x2F, 0x3A, 0xFF);
         [SerializeField] private Color leftChoice = new Color32(0x8A, 0x41, 0x4B, 0xFF);
         [SerializeField] private Color rightChoice = new Color32(0xB3, 0x8A, 0x3D, 0xFF);
+        [SerializeField] private Color portraitFallbackBackground =
+            new Color32(0x12, 0x16, 0x20, 0xFF);
+        [SerializeField] private Color portraitFallbackForeground =
+            new Color32(0xB9, 0xAA, 0x90, 0xFF);
 
         [Header("Typography")]
         [SerializeField] private TMP_FontAsset titleFont;
@@ -72,6 +76,8 @@ namespace RoyalDecisions.Presentation
         public Color EmptyBar => emptyBar;
         public Color LeftChoice => leftChoice;
         public Color RightChoice => rightChoice;
+        public Color PortraitFallbackBackground => portraitFallbackBackground;
+        public Color PortraitFallbackForeground => portraitFallbackForeground;
         public TMP_FontAsset TitleFont => titleFont;
         public TMP_FontAsset BodyFont => bodyFont;
         public Sprite BackgroundSprite => backgroundSprite;

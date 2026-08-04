@@ -14,12 +14,24 @@ namespace RoyalDecisions.Presentation
     {
         AudioPlayResult Play(string audioEventId);
 
+        AudioPlayResult PlayMusic(string audioEventId, bool loop = true);
+
+        void StopMusic();
+
         void SetVolume(float volume);
 
         void SetMuted(bool muted);
 
+        void SetSfxVolume(float volume);
+
+        void SetMusicVolume(float volume);
+
+        void SetMasterMuted(bool muted);
+
         float Volume { get; }
 
         bool IsMuted { get; }
+
+        float MusicVolume { get; }
     }
 }

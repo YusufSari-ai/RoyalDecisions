@@ -10,6 +10,7 @@ namespace RoyalDecisions.Presentation
         [SerializeField] private Image artwork;
         [SerializeField] private Image darkOverlay;
         [SerializeField] private Image vignette;
+        [SerializeField] private ProceduralVignetteGraphic proceduralVignette;
 
         public void ApplyTheme(GameUITheme theme)
         {
@@ -22,6 +23,11 @@ namespace RoyalDecisions.Presentation
             Configure(artwork, theme.BackgroundSprite, Color.white, false);
             Configure(darkOverlay, null, new Color(0f, 0f, 0f, 0.28f), true);
             Configure(vignette, theme.VignetteSprite, Color.white, false);
+            if (proceduralVignette != null)
+            {
+                proceduralVignette.SetStyle(Color.black, 0.22f, 0.42f);
+                proceduralVignette.enabled = theme.VignetteSprite == null;
+            }
         }
 
         private static void Configure(Image image, Sprite sprite, Color color, bool enabledWithoutSprite)
@@ -38,12 +44,18 @@ namespace RoyalDecisions.Presentation
         }
 
 #if UNITY_EDITOR
-        public void SetAuthoringReferences(Image surface, Image art, Image overlay, Image vignetteImage)
+        public void SetAuthoringReferences(
+            Image surface,
+            Image art,
+            Image overlay,
+            Image vignetteImage,
+            ProceduralVignetteGraphic generatedVignette = null)
         {
             fallbackSurface = surface;
             artwork = art;
             darkOverlay = overlay;
             vignette = vignetteImage;
+            proceduralVignette = generatedVignette;
         }
 #endif
     }

@@ -7,12 +7,16 @@ namespace RoyalDecisions.Presentation
     {
         [SerializeField] private RectTransform card;
         [SerializeField] private RectTransform nextCard;
+        [Tooltip("Width is measured from this rect, normally SafeArea. Defaults to CardArea.")]
+        [SerializeField] private RectTransform widthReference;
         [Range(0.7f, 0.8f)]
-        [SerializeField] private float preferredWidthRatio = 0.76f;
+        [SerializeField] private float preferredWidthRatio = 0.78f;
         [Min(0.01f)]
         [SerializeField] private float widthToHeightRatio = 0.68f;
         [Range(0.1f, 1f)]
         [SerializeField] private float maximumHeightRatio = 0.94f;
+        [Min(1f)]
+        [SerializeField] private float maximumWidth = 920f;
         [SerializeField] private Vector2 nextCardOffset = new Vector2(0f, 12f);
         [Range(0.8f, 1f)]
         [SerializeField] private float nextCardScale = 0.96f;
@@ -38,8 +42,14 @@ namespace RoyalDecisions.Presentation
                 return;
             }
 
+            RectTransform reference = widthReference != null ? widthReference : area;
             Vector2 size = ResponsiveCardLayoutMath.Calculate(
-                area.rect.size, preferredWidthRatio, widthToHeightRatio, maximumHeightRatio);
+                reference.rect.width,
+                area.rect.size,
+                preferredWidthRatio,
+                widthToHeightRatio,
+                maximumHeightRatio,
+                maximumWidth);
             Apply(card, size, Vector2.zero, 1f);
             Apply(nextCard, size, nextCardOffset, nextCardScale);
         }
@@ -60,10 +70,14 @@ namespace RoyalDecisions.Presentation
         }
 
 #if UNITY_EDITOR
-        public void SetAuthoringReferences(RectTransform activeCard, RectTransform queuedCard)
+        public void SetAuthoringReferences(
+            RectTransform activeCard,
+            RectTransform queuedCard,
+            RectTransform sizingReference = null)
         {
             card = activeCard;
             nextCard = queuedCard;
+            widthReference = sizingReference;
         }
 #endif
     }

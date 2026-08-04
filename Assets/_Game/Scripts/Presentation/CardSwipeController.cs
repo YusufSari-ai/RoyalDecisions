@@ -80,6 +80,10 @@ namespace RoyalDecisions.Presentation
         private Coroutine runningAnimation;
         private ChoiceSide? confirmedSide;
         private bool hasPublishedChoicePreview;
+        private bool accessibilityDefaultsCaptured;
+        private float defaultMaxRotation;
+        private float defaultSnapBackDuration;
+        private float defaultExitDuration;
 
         public CardSwipeState State { get; private set; } = CardSwipeState.Idle;
 
@@ -231,6 +235,22 @@ namespace RoyalDecisions.Presentation
             RestoreNeutral();
 
             State = CardSwipeState.Idle;
+        }
+
+        public void SetReducedMotion(bool enabled)
+        {
+            if (!accessibilityDefaultsCaptured)
+            {
+                defaultMaxRotation = maxRotationDegrees;
+                defaultSnapBackDuration = snapBackDuration;
+                defaultExitDuration = exitDuration;
+                accessibilityDefaultsCaptured = true;
+            }
+            maxRotationDegrees = enabled ? 4f : defaultMaxRotation;
+            snapBackDuration = enabled ? Mathf.Min(defaultSnapBackDuration, 0.05f)
+                : defaultSnapBackDuration;
+            exitDuration = enabled ? Mathf.Min(defaultExitDuration, 0.05f)
+                : defaultExitDuration;
         }
 
         // --- Confirmation --------------------------------------------------------

@@ -76,7 +76,7 @@ namespace RoyalDecisions.Composition
 
             RunLoadOutcome outcome = runStore.Load();
 
-            if (outcome.Succeeded && outcome.HasRun)
+            if (outcome.Succeeded && outcome.HasRun && outcome.RunState.IsRunActive)
             {
                 IsContinueAvailable = true;
                 ApplyContinueAvailability();

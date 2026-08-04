@@ -21,6 +21,11 @@ namespace RoyalDecisions.Domain
         [SerializeField] private float musicVolume = DefaultVolume;
         [SerializeField] private float sfxVolume = DefaultVolume;
         [SerializeField] private bool hapticsEnabled = true;
+        [SerializeField] private bool masterMuted;
+        [SerializeField] private bool reducedMotion;
+        [SerializeField] private bool largerText;
+        [SerializeField] private bool highContrast;
+        [SerializeField] private bool tutorialCompleted;
 
         public static GameSettings CreateDefault()
         {
@@ -32,6 +37,16 @@ namespace RoyalDecisions.Domain
         public float SfxVolume => sfxVolume;
 
         public bool HapticsEnabled => hapticsEnabled;
+
+        public bool MasterMuted => masterMuted;
+
+        public bool ReducedMotion => reducedMotion;
+
+        public bool LargerText => largerText;
+
+        public bool HighContrast => highContrast;
+
+        public bool TutorialCompleted => tutorialCompleted;
 
         public void SetMusicVolume(float value)
         {
@@ -47,6 +62,16 @@ namespace RoyalDecisions.Domain
         {
             hapticsEnabled = value;
         }
+
+        public void SetMasterMuted(bool value) => masterMuted = value;
+
+        public void SetReducedMotion(bool value) => reducedMotion = value;
+
+        public void SetLargerText(bool value) => largerText = value;
+
+        public void SetHighContrast(bool value) => highContrast = value;
+
+        public void SetTutorialCompleted(bool value) => tutorialCompleted = value;
 
         /// <summary>
         /// Repairs values written straight into the backing fields by deserialization.

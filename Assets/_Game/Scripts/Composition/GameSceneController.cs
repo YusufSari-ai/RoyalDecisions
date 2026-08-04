@@ -30,6 +30,7 @@ namespace RoyalDecisions.Composition
         [SerializeField] private CardSwipeController swipeController;
         [SerializeField] private RunStatusView runStatusView;
         [SerializeField] private FooterView footerView;
+        [SerializeField] private TutorialCoordinator tutorialCoordinator;
 
         [Header("Audio")]
         [SerializeField] private AudioService audioService;
@@ -44,6 +45,7 @@ namespace RoyalDecisions.Composition
         private GameSession session;
         private ISettingsStore settingsStore;
         private IRunSaveStore runStoreOverride;
+        private IRunSaveStore runStore;
         private ISeedProvider seedProviderOverride;
         private bool subscribed;
 
@@ -100,6 +102,14 @@ namespace RoyalDecisions.Composition
 
             ApplySettings();
             StartSession();
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            DevelopmentDebugPanel debug = gameObject.GetComponent<DevelopmentDebugPanel>();
+            if (debug == null)
+            {
+                debug = gameObject.AddComponent<DevelopmentDebugPanel>();
+            }
+            debug.Configure(session);
+#endif
         }
 
         private void OnDisable()
@@ -124,7 +134,7 @@ namespace RoyalDecisions.Composition
                 return;
             }
 
-            IRunSaveStore runStore = runStoreOverride;
+            runStore = runStoreOverride;
 
             if (runStore == null || settingsStore == null)
             {
@@ -171,8 +181,9 @@ namespace RoyalDecisions.Composition
             GameSettings settings = settingsStore.Load();
 
             // Volume and mute go through the audio service's public API only.
-            audioService.SetVolume(settings.SfxVolume);
-            audioService.SetMuted(false);
+            audioService.SetSfxVolume(settings.SfxVolume);
+            audioService.SetMusicVolume(settings.MusicVolume);
+            audioService.SetMasterMuted(settings.MasterMuted);
         }
 
         private void StartSession()
@@ -184,7 +195,12 @@ namespace RoyalDecisions.Composition
                 session.Resume();
                 return;
             }
-
+            if (mode == SessionStartMode.NewGame
+                && tutorialCoordinator != null
+                && tutorialCoordinator.TryGateNewGame(settingsStore, () => session.StartNewGame()))
+            {
+                return;
+            }
             session.StartNewGame();
         }
 
@@ -280,6 +296,27 @@ namespace RoyalDecisions.Composition
             hudView?.ClearChoiceImpact();
         }
 
+        /// <summary>Coalesced pause/focus-loss entry point; never creates an extra save.</summary>
+        public void HandleApplicationInterrupted()
+        {
+            if (session == null)
+            {
+                swipeController?.CancelInteraction();
+                return;
+            }
+
+            if (session.State == GameSessionState.WaitingForCardExit)
+            {
+                // The decision was already persisted. Completing presentation is idempotent at
+                // the GameSession boundary and deliberately performs no additional save.
+                session.NotifyCardExitCompleted();
+                return;
+            }
+
+            swipeController?.CancelInteraction();
+            hudView?.ClearChoiceImpact();
+        }
+
 #if UNITY_EDITOR
         /// <summary>Editor-only wiring hook shared by scene setup and tests.</summary>
         public void SetAuthoringReferences(
@@ -291,7 +328,8 @@ namespace RoyalDecisions.Composition
             AudioService audio = null,
             SessionStartMode startMode = SessionStartMode.NewGame,
             RunStatusView status = null,
-            FooterView footer = null)
+            FooterView footer = null,
+            TutorialCoordinator tutorial = null)
         {
             catalogue = contentCatalogue;
             cardView = card;
@@ -302,6 +340,7 @@ namespace RoyalDecisions.Composition
             fallbackStartMode = startMode;
             runStatusView = status;
             footerView = footer;
+            tutorialCoordinator = tutorial;
         }
 #endif
     }

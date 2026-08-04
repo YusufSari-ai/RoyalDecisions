@@ -19,11 +19,17 @@ namespace RoyalDecisions.Presentation
         [Tooltip("Optional. Without it every cue resolves to NoAudioSource.")]
         [SerializeField] private AudioSource audioSource;
 
+        [Tooltip("Optional separate music source. Missing music remains silent.")]
+        [SerializeField] private AudioSource musicSource;
+
         [Tooltip("Optional. Without it every cue resolves to NoLibrary.")]
         [SerializeField] private AudioCueLibrary cueLibrary;
 
         [Range(0f, 1f)]
         [SerializeField] private float volume = 1f;
+
+        [Range(0f, 1f)]
+        [SerializeField] private float musicVolume = 1f;
 
         [SerializeField] private bool muted;
 
@@ -39,6 +45,8 @@ namespace RoyalDecisions.Presentation
         public float Volume => volume;
 
         public bool IsMuted => muted;
+
+        public float MusicVolume => musicVolume;
 
         /// <summary>Diagnostic: how many distinct cue IDs have been warned about.</summary>
         public int WarnedCueIdCount => warnedCueIds.Count;
@@ -95,6 +103,17 @@ namespace RoyalDecisions.Presentation
             }
         }
 
+        public void SetSfxVolume(float value) => SetVolume(value);
+
+        public void SetMusicVolume(float value)
+        {
+            musicVolume = Mathf.Clamp01(value);
+            if (musicSource != null)
+            {
+                musicSource.volume = musicVolume;
+            }
+        }
+
         public void SetMuted(bool value)
         {
             muted = value;
@@ -103,6 +122,66 @@ namespace RoyalDecisions.Presentation
             {
                 audioSource.mute = value;
             }
+            if (musicSource != null)
+            {
+                musicSource.mute = value;
+            }
+        }
+
+        public void SetMasterMuted(bool value) => SetMuted(value);
+
+        public AudioPlayResult PlayMusic(string audioEventId, bool loop = true)
+        {
+            AudioPlayResult resolution = ResolveCue(audioEventId, out AudioClip clip);
+            if (resolution != AudioPlayResult.Played)
+            {
+                return resolution;
+            }
+            if (musicSource == null)
+            {
+                WarnOnce(ref warnedMissingSource, "No music AudioSource is assigned; music is silent.");
+                return AudioPlayResult.NoAudioSource;
+            }
+            if (muted)
+            {
+                return AudioPlayResult.Muted;
+            }
+            musicSource.clip = clip;
+            musicSource.loop = loop;
+            musicSource.volume = musicVolume;
+            musicSource.Play();
+            return AudioPlayResult.Played;
+        }
+
+        public void StopMusic()
+        {
+            musicSource?.Stop();
+        }
+
+        private AudioPlayResult ResolveCue(string audioEventId, out AudioClip clip)
+        {
+            clip = null;
+            if (string.IsNullOrEmpty(audioEventId))
+            {
+                return AudioPlayResult.NoCueId;
+            }
+            if (cueLibrary == null)
+            {
+                WarnOnce(ref warnedMissingLibrary, "No AudioCueLibrary is assigned; audio is silent.");
+                return AudioPlayResult.NoLibrary;
+            }
+            if (!cueLibrary.TryGetCue(audioEventId, out AudioCue cue))
+            {
+                WarnOnceForCue(audioEventId, "is not in the cue library");
+                return AudioPlayResult.UnknownCue;
+            }
+            if (cue.Clip == null)
+            {
+                WarnOnceForCue(audioEventId, "has no clip assigned");
+                return AudioPlayResult.NullClip;
+            }
+            clip = cue.Clip;
+            return AudioPlayResult.Played;
         }
 
         private void WarnOnce(ref bool alreadyWarned, string message)
@@ -129,10 +208,14 @@ namespace RoyalDecisions.Presentation
 
 #if UNITY_EDITOR
         /// <summary>Editor-only wiring hook shared by scene setup and tests.</summary>
-        public void SetAuthoringReferences(AudioSource source, AudioCueLibrary library)
+        public void SetAuthoringReferences(
+            AudioSource source,
+            AudioCueLibrary library,
+            AudioSource music = null)
         {
             audioSource = source;
             cueLibrary = library;
+            musicSource = music;
         }
 #endif
     }

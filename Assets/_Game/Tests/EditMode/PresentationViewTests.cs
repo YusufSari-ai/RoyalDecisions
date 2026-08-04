@@ -90,6 +90,32 @@ namespace RoyalDecisions.Tests.EditMode
         }
 
         [Test]
+        public void CardView_WithNoArtShowsTheProceduralPortraitFallback()
+        {
+            CardView view = BuildCardView(
+                out TextMeshProUGUI speaker, out TextMeshProUGUI body,
+                out Image portrait, out ChoicePreviewView left, out ChoicePreviewView right,
+                new GraphicFallbackSettings(null, Color.magenta, useFallbackColour: false));
+            PortraitFallbackView fallback =
+                PresentationTestObjects.CreateComponent<PortraitFallbackView>("Fallback");
+            fallback.SetAuthoringReferences(
+                fallback.gameObject,
+                PresentationTestObjects.CreateImage("Backdrop"),
+                PresentationTestObjects.CreateImage("Head"),
+                PresentationTestObjects.CreateImage("Shoulders"),
+                PresentationTestObjects.CreateImage("Torso"));
+            view.SetAuthoringReferences(
+                speaker, body, portrait, left, right,
+                new GraphicFallbackSettings(null, Color.magenta, useFallbackColour: false),
+                generatedPortraitFallback: fallback);
+
+            view.Show(CardTestFactory.Card(id: "card_a"));
+
+            Assert.That(fallback.IsVisible, Is.True);
+            Assert.That(portrait.enabled, Is.False);
+        }
+
+        [Test]
         public void CardView_UsesTheFallbackColourWhenConfigured()
         {
             Color colour = new Color(0.3f, 0.1f, 0.4f, 1f);

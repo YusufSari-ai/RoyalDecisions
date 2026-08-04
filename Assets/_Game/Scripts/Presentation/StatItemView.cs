@@ -45,6 +45,7 @@ namespace RoyalDecisions.Presentation
         private string negativeImpactGlyph = "▼";
         private Color positiveImpactColor = new Color32(0xD9, 0xC2, 0x8B, 0xFF);
         private Color negativeImpactColor = new Color32(0xF2, 0xE7, 0xCF, 0xFF);
+        private bool reducedMotion;
 
         public StatType Stat => stat;
 
@@ -114,13 +115,22 @@ namespace RoyalDecisions.Presentation
                     value <= criticalBoundary || value >= StatBounds.Max - criticalBoundary);
             }
 
-            if (animated)
+            if (animated && !reducedMotion)
             {
                 SetFillAnimated(StatDisplayMath.ToFill(value));
             }
             else
             {
                 SetFill(StatDisplayMath.ToFill(value));
+            }
+        }
+
+        public void SetReducedMotion(bool enabled)
+        {
+            reducedMotion = enabled;
+            if (enabled && animating)
+            {
+                SetFill(targetFill);
             }
         }
 

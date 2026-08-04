@@ -4,6 +4,7 @@
     "references": [
         "RoyalDecisions.Data",
         "RoyalDecisions.Domain",
+        "RoyalDecisions.Application",
         "RoyalDecisions.Presentation",
         "RoyalDecisions.Composition",
         "UnityEngine.UI",

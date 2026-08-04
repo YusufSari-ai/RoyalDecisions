@@ -452,6 +452,66 @@ namespace RoyalDecisions.Tests.EditMode
             Assert.That(report.Contains(ContentIssueCode.EmptyText), Is.True);
         }
 
+        [Test]
+        public void SameFlagRequiredAndForbidden_IsAnError()
+        {
+            ContentValidationReport report = Validate(Sorted(CardTestFactory.Card(
+                id: "card_a",
+                conditions: CardTestFactory.Conditions(
+                    requiredFlags: new[] { "gate" },
+                    forbiddenFlags: new[] { "gate" }))));
+
+            Assert.That(report.Contains(ContentIssueCode.ConflictingFlags), Is.True);
+            Assert.That(report.HasErrors, Is.True);
+        }
+
+        [Test]
+        public void DisjointRangesForOneStat_AreAnError()
+        {
+            ContentValidationReport report = Validate(Sorted(CardTestFactory.Card(
+                id: "card_a",
+                conditions: CardTestFactory.Conditions(statRanges: new[]
+                {
+                    new StatRange(StatType.People, 0, 20),
+                    new StatRange(StatType.People, 30, 50)
+                }))));
+
+            Assert.That(report.Contains(ContentIssueCode.EmptyStatRangeIntersection), Is.True);
+        }
+
+        [Test]
+        public void DuplicateFlagCondition_IsAWarning()
+        {
+            ContentValidationReport report = Validate(Sorted(CardTestFactory.Card(
+                id: "card_a",
+                left: CardTestFactory.Choice(flagsToAdd: new[] { "gate" }),
+                conditions: CardTestFactory.Conditions(
+                    requiredFlags: new[] { "gate", "gate" }))));
+
+            Assert.That(report.Contains(ContentIssueCode.DuplicateConditionEntry), Is.True);
+        }
+
+        [Test]
+        public void ExcessiveDelta_IsAWarning()
+        {
+            ContentValidationReport report = Validate(Sorted(CardTestFactory.Card(
+                id: "card_a",
+                left: CardTestFactory.Choice(authority: 26))));
+
+            Assert.That(report.Contains(ContentIssueCode.ExcessiveStatDelta), Is.True);
+        }
+
+        [Test]
+        public void MissingOptionalArt_IsInformationOnly()
+        {
+            ContentValidationReport report = Validate(Sorted(
+                CardTestFactory.Card(id: "card_a")));
+
+            Assert.That(report.Contains(ContentIssueCode.OptionalPortraitMissing), Is.True);
+            Assert.That(report.InformationCount, Is.GreaterThan(0));
+            Assert.That(report.HasErrors, Is.False);
+        }
+
         // --- Culture independence ---------------------------------------------------------------
 
         [Test]

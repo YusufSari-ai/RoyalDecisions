@@ -17,6 +17,8 @@ namespace RoyalDecisions.Presentation
 
         public bool IsMuted { get; private set; }
 
+        public float MusicVolume { get; private set; } = 1f;
+
         public AudioPlayResult Play(string audioEventId)
         {
             return string.IsNullOrEmpty(audioEventId)
@@ -33,5 +35,16 @@ namespace RoyalDecisions.Presentation
         {
             IsMuted = muted;
         }
+
+        public AudioPlayResult PlayMusic(string audioEventId, bool loop = true) =>
+            Play(audioEventId);
+
+        public void StopMusic() { }
+
+        public void SetSfxVolume(float value) => SetVolume(value);
+
+        public void SetMusicVolume(float value) => MusicVolume = Mathf.Clamp01(value);
+
+        public void SetMasterMuted(bool muted) => SetMuted(muted);
     }
 }

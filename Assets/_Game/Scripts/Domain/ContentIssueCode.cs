@@ -25,11 +25,24 @@ namespace RoyalDecisions.Domain
         MissingEndingBoundary = 11,
         OpeningCardMissing = 12,
         CardsNotOrdinallySorted = 13,
+        ConflictingFlags = 14,
+        EmptyStatRangeIntersection = 15,
 
         // --- Warnings ---
         DuplicateEndingBoundary = 100,
         UnreachableRequiredFlag = 101,
         RedundantCooldown = 102,
-        EmptyText = 103
+        EmptyText = 103,
+        DuplicateConditionEntry = 104,
+        RemovedFlagNeverProduced = 105,
+        FlagReadNeverProduced = 106,
+        ExcessiveStatDelta = 107,
+        ExcessiveTextLength = 108,
+        ShadowedEnding = 109,
+
+        // --- Information ---
+        OptionalPortraitMissing = 200,
+        OptionalEndingImageMissing = 201,
+        FlagWrittenNeverRead = 202
     }
 }

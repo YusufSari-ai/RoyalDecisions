@@ -10,12 +10,14 @@ namespace RoyalDecisions.Domain
         private readonly List<ContentValidationIssue> issues;
         private readonly List<ContentValidationIssue> errors;
         private readonly List<ContentValidationIssue> warnings;
+        private readonly List<ContentValidationIssue> information;
 
         public ContentValidationReport(IReadOnlyList<ContentValidationIssue> foundIssues)
         {
             issues = new List<ContentValidationIssue>();
             errors = new List<ContentValidationIssue>();
             warnings = new List<ContentValidationIssue>();
+            information = new List<ContentValidationIssue>();
 
             if (foundIssues == null)
             {
@@ -31,9 +33,13 @@ namespace RoyalDecisions.Domain
                 {
                     errors.Add(issue);
                 }
-                else
+                else if (issue.IsWarning)
                 {
                     warnings.Add(issue);
+                }
+                else
+                {
+                    information.Add(issue);
                 }
             }
         }
@@ -44,9 +50,13 @@ namespace RoyalDecisions.Domain
 
         public IReadOnlyList<ContentValidationIssue> Warnings => warnings;
 
+        public IReadOnlyList<ContentValidationIssue> Information => information;
+
         public int ErrorCount => errors.Count;
 
         public int WarningCount => warnings.Count;
+
+        public int InformationCount => information.Count;
 
         public bool HasErrors => errors.Count > 0;
 
@@ -85,9 +95,10 @@ namespace RoyalDecisions.Domain
         public override string ToString()
         {
             return string.Format(
-                "Content validation: {0} error(s), {1} warning(s)",
+                "Content validation: {0} error(s), {1} warning(s), {2} information item(s)",
                 ErrorCount,
-                WarningCount);
+                WarningCount,
+                InformationCount);
         }
     }
 }

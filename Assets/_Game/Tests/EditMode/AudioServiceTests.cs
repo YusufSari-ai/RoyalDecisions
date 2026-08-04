@@ -197,6 +197,18 @@ namespace RoyalDecisions.Tests.EditMode
             Assert.That(service.IsMuted, Is.True);
         }
 
+        [Test]
+        public void MusicAndSfxVolumesAreIndependentAndClamped()
+        {
+            AudioService service = Service(Source(), Library());
+
+            service.SetSfxVolume(0.25f);
+            service.SetMusicVolume(2f);
+
+            Assert.That(service.Volume, Is.EqualTo(0.25f));
+            Assert.That(service.MusicVolume, Is.EqualTo(1f));
+        }
+
         // --- The silent implementation --------------------------------------------------
 
         [Test]
@@ -212,6 +224,10 @@ namespace RoyalDecisions.Tests.EditMode
 
             silent.SetMuted(true);
             Assert.That(silent.IsMuted, Is.True);
+            silent.SetMusicVolume(-1f);
+            Assert.That(silent.MusicVolume, Is.Zero);
+            Assert.That(silent.PlayMusic("music"), Is.EqualTo(AudioPlayResult.NoLibrary));
+            Assert.That(() => silent.StopMusic(), Throws.Nothing);
         }
     }
 }

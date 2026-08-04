@@ -75,6 +75,21 @@ namespace RoyalDecisions.Tests.EditMode
         }
 
         [Test]
+        public void EndedSave_DisablesContinueWithoutDeletingSave()
+        {
+            FakeRunSaveStore store = new FakeRunSaveStore();
+            RunState ended = RunState.CreateNew(123);
+            ended.EndRun();
+            store.Seed(ended);
+
+            controller.Configure(store, null, null);
+
+            Assert.That(controller.IsContinueAvailable, Is.False);
+            Assert.That(continueButton.interactable, Is.False);
+            Assert.That(store.DeleteCount, Is.Zero);
+        }
+
+        [Test]
         public void CorruptSave_DisablesContinueButton()
         {
             FakeRunSaveStore store = new FakeRunSaveStore

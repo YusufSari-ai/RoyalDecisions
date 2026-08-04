@@ -79,7 +79,7 @@ namespace RoyalDecisions.Application
             }
 
             RunLoadOutcome outcome = runSaveStore.Load();
-            return outcome.Succeeded && outcome.HasRun;
+            return outcome.Succeeded && outcome.HasRun && outcome.RunState.IsRunActive;
         }
 
         public SessionResult StartNewGame()
@@ -131,6 +131,14 @@ namespace RoyalDecisions.Application
             {
                 return FailPersistence(SessionError.Terminal(
                     SessionErrorCode.LoadFailed, "The save produced no run."));
+            }
+
+            if (!outcome.RunState.IsRunActive)
+            {
+                SetState(GameSessionState.Uninitialized);
+                return Rejected(
+                    SessionErrorCode.LoadFailed,
+                    "The saved run has ended and cannot be continued.");
             }
 
             return BeginRun(outcome.RunState);
@@ -270,6 +278,70 @@ namespace RoyalDecisions.Application
             SetState(GameSessionState.Uninitialized);
         }
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        public SessionResult ExecuteDevelopmentCommand(DevelopmentSessionCommand command)
+        {
+            switch (command)
+            {
+                case DevelopmentSessionCommand.NewGame:
+                    Shutdown();
+                    return StartNewGame();
+                case DevelopmentSessionCommand.DeleteSave:
+                    Shutdown();
+                    SaveOutcome deleted = runSaveStore.Delete();
+                    return deleted.Succeeded
+                        ? Ok()
+                        : FailPersistence(SessionError.Recoverable(
+                            SessionErrorCode.SaveFailed, deleted.Message));
+                case DevelopmentSessionCommand.ChooseLeft:
+                    return DevelopmentChooseAndComplete(ChoiceSide.Left);
+                case DevelopmentSessionCommand.ChooseRight:
+                    return DevelopmentChooseAndComplete(ChoiceSide.Right);
+                default:
+                    return Reject("Unknown development command.");
+            }
+        }
+
+        public SessionResult DevelopmentSetStats(StatValues values)
+        {
+            if (runState == null || statSystem == null)
+            {
+                return Reject("No development run is active.");
+            }
+            runState.SetStats(values.Sanitized());
+            statSystem = new StatSystem(runState);
+            choiceResolver = new ChoiceResolver(statSystem);
+            presenter.UnbindStats();
+            presenter.BindStats(statSystem);
+            presenter.RefreshStats(statSystem.Current);
+            SaveOutcome outcome = runSaveStore.Save(runState);
+            return outcome.Succeeded
+                ? Ok()
+                : FailPersistence(SessionError.Recoverable(
+                    SessionErrorCode.SaveFailed, outcome.Message));
+        }
+
+        public SessionResult DevelopmentSetFlag(string flag, bool present)
+        {
+            if (runState == null || string.IsNullOrWhiteSpace(flag))
+            {
+                return Reject("A run and non-empty flag are required.");
+            }
+            if (present) runState.AddFlag(flag); else runState.RemoveFlag(flag);
+            SaveOutcome outcome = runSaveStore.Save(runState);
+            return outcome.Succeeded
+                ? Ok()
+                : FailPersistence(SessionError.Recoverable(
+                    SessionErrorCode.SaveFailed, outcome.Message));
+        }
+
+        private SessionResult DevelopmentChooseAndComplete(ChoiceSide side)
+        {
+            SessionResult decision = ConfirmDecision(side);
+            return decision.Accepted ? NotifyCardExitCompleted() : decision;
+        }
+#endif
+
         // --- Run lifecycle ------------------------------------------------------
 
         private SessionResult BeginRun(RunState restored)
@@ -318,15 +390,6 @@ namespace RoyalDecisions.Application
                         SessionErrorCode.SaveFailed, outcome.Message));
                 }
             }
-            else if (!runState.IsRunActive)
-            {
-                // A finished run was restored: show its ending rather than dealing another card.
-                GameOverResult over = gameOverEvaluator.Evaluate(runState, EndingList);
-                presenter.ShowGameOver(over);
-                SetState(GameSessionState.ShowingGameOver);
-                return Ok();
-            }
-
             return PresentNextCard();
         }
 

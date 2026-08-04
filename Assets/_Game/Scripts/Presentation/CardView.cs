@@ -35,6 +35,8 @@ namespace RoyalDecisions.Presentation
         [SerializeField] private Image portraitFrameImage;
         [SerializeField] private Image portraitMaskImage;
         [SerializeField] private Image[] cornerImages = System.Array.Empty<Image>();
+        [SerializeField] private Image[] temporaryBorderImages = System.Array.Empty<Image>();
+        [SerializeField] private PortraitFallbackView portraitFallbackView;
         [SerializeField] private GameObject nextCardRoot;
         [SerializeField] private Image nextCardSurface;
         [SerializeField] private Image nextCardFrame;
@@ -110,6 +112,19 @@ namespace RoyalDecisions.Presentation
                 borderOutline.enabled = theme.CardFrameSprite == null;
             }
 
+            for (int i = 0; i < temporaryBorderImages.Length; i++)
+            {
+                Image border = temporaryBorderImages[i];
+                if (border == null)
+                {
+                    continue;
+                }
+
+                border.color = theme.BorderGold;
+                border.raycastTarget = false;
+                border.enabled = theme.CardFrameSprite == null;
+            }
+
             ConfigureOptional(frameImage, theme.CardFrameSprite, theme.BorderGold);
             ConfigureOptional(portraitFrameImage, theme.PortraitFrameSprite, theme.BorderGold, true);
             ConfigureOptional(portraitMaskImage, theme.PortraitMaskSprite, Color.white, true);
@@ -128,6 +143,7 @@ namespace RoyalDecisions.Presentation
 
             ConfigureText(speakerText, theme.HighlightGold, theme.TitleFont);
             ConfigureText(bodyText, theme.PrimaryText, theme.BodyFont);
+            portraitFallbackView?.ApplyTheme(theme);
             leftPreview?.ApplyTheme(theme);
             rightPreview?.ApplyTheme(theme);
         }
@@ -146,6 +162,16 @@ namespace RoyalDecisions.Presentation
             SetText(bodyText, presentation.BodyText);
 
             PortraitMode = GraphicFallback.Apply(portraitImage, presentation.Portrait, portraitFallback);
+            bool hasPortraitArtwork = PortraitMode == GraphicFallbackMode.UseSource
+                || PortraitMode == GraphicFallbackMode.UseFallbackSprite;
+            if (portraitFallbackView != null)
+            {
+                portraitFallbackView.SetVisible(!hasPortraitArtwork);
+                if (!hasPortraitArtwork && portraitImage != null)
+                {
+                    portraitImage.enabled = false;
+                }
+            }
 
             // Preview labels come from the card, so replacing a card cannot leave the previous
             // card's wording behind on either side.
@@ -233,7 +259,9 @@ namespace RoyalDecisions.Presentation
             Image[] corners = null,
             GameObject queuedCard = null,
             Image queuedSurface = null,
-            Image queuedFrame = null)
+            Image queuedFrame = null,
+            Image[] generatedBorders = null,
+            PortraitFallbackView generatedPortraitFallback = null)
         {
             speakerText = speaker;
             bodyText = body;
@@ -256,6 +284,8 @@ namespace RoyalDecisions.Presentation
             nextCardRoot = queuedCard;
             nextCardSurface = queuedSurface;
             nextCardFrame = queuedFrame;
+            temporaryBorderImages = generatedBorders ?? System.Array.Empty<Image>();
+            portraitFallbackView = generatedPortraitFallback;
         }
 #endif
     }

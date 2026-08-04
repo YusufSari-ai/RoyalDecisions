@@ -57,6 +57,38 @@ namespace RoyalDecisions.Tests.EditMode
             session.NotifyCardExitCompleted();
         }
 
+        [Test]
+        public void DevelopmentChoiceUsesRealExactlyOnceSessionFlow()
+        {
+            GameSession session = StartedSession();
+            int savesBefore = store.SaveCount;
+
+            SessionResult result = session.ExecuteDevelopmentCommand(
+                DevelopmentSessionCommand.ChooseLeft);
+
+            Assert.That(result.Accepted, Is.True);
+            Assert.That(session.CurrentRun.Turn, Is.EqualTo(1));
+            Assert.That(store.SaveCount, Is.EqualTo(savesBefore + 1));
+            Assert.That(session.ExecuteDevelopmentCommand(
+                DevelopmentSessionCommand.ChooseLeft).Accepted, Is.True,
+                "the second command is a decision for the newly presented card, not a duplicate");
+        }
+
+        [Test]
+        public void DevelopmentStatMutationRefreshesAndPersistsThroughPorts()
+        {
+            GameSession session = StartedSession();
+            int savesBefore = store.SaveCount;
+
+            SessionResult result = session.DevelopmentSetStats(
+                new StatValues(60, 61, 62, 63));
+
+            Assert.That(result.Accepted, Is.True);
+            Assert.That(session.CurrentRun.Stats.Authority, Is.EqualTo(60));
+            Assert.That(store.SaveCount, Is.EqualTo(savesBefore + 1));
+            Assert.That(presenter.LastStats.Authority, Is.EqualTo(60));
+        }
+
         // --- 1, 2: the opening card ------------------------------------------
 
         [Test]

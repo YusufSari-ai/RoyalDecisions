@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using RoyalDecisions.Composition;
 using RoyalDecisions.Data;
+using RoyalDecisions.Domain;
 using RoyalDecisions.Presentation;
 using TMPro;
 using UnityEditor;
@@ -31,6 +32,8 @@ namespace RoyalDecisions.Editor
         public const string InterfaceTextPath = TurkishInterfaceTextGenerator.AssetPath;
         public const string TurkishFontPath = TurkishGlyphValidator.FontAssetPath;
         public const string DefaultThemePath = "Assets/_Game/Content/UI/DefaultGameUITheme.asset";
+        public const string DefaultFeedbackCueProfilePath =
+            "Assets/_Game/Content/UI/DefaultFeedbackCueProfile.asset";
 
         private const string ReportPath = "Logs/RoyalDecisionsSceneValidation.json";
         // Unity clears Temp during startup, so rollback data must live in the untracked Library.
@@ -48,6 +51,7 @@ namespace RoyalDecisions.Editor
         private static readonly Color ButtonColour = new Color(0.78f, 0.58f, 0.18f, 1f);
         private static readonly Color SpeakerTextColour = new Color32(0xD9, 0xC2, 0x8B, 0xFF);
         private static readonly Color BodyTextColour = new Color32(0xF2, 0xE7, 0xCF, 0xFF);
+        private static readonly Color SecondaryTextColour = new Color32(0xB9, 0xAA, 0x90, 0xFF);
         private static readonly Color[] StatFillColours =
         {
             new Color32(0x8A, 0x41, 0x4B, 0xFF),
@@ -182,6 +186,7 @@ namespace RoyalDecisions.Editor
                 TMP_FontAsset turkishFont =
                     AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(TurkishFontPath);
                 GameUITheme theme = EnsureDefaultTheme(report);
+                FeedbackCueProfile feedback = EnsureDefaultFeedbackCueProfile(report);
                 ContentCatalogue catalogue = AssetDatabase.LoadAssetAtPath<ContentCatalogue>(
                     CataloguePath);
 
@@ -214,8 +219,11 @@ namespace RoyalDecisions.Editor
                     InterfaceTextPath);
                 turkishFont = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(TurkishFontPath);
                 theme = AssetDatabase.LoadAssetAtPath<GameUITheme>(DefaultThemePath);
+                feedback = AssetDatabase.LoadAssetAtPath<FeedbackCueProfile>(
+                    DefaultFeedbackCueProfilePath);
 
-                ApplyGameScene(game, catalogue, intent, interfaceText, turkishFont, theme, report);
+                ApplyGameScene(
+                    game, catalogue, intent, interfaceText, turkishFont, theme, feedback, report);
                 if (!report.Succeeded)
                 {
                     throw new InvalidOperationException("Game scene contains blocking ambiguity.");
@@ -226,6 +234,31 @@ namespace RoyalDecisions.Editor
                 {
                     throw new InvalidOperationException("Game scene could not be saved.");
                 }
+
+                Scene bootstrap = OpenOrCreateEmptyScene(BootstrapScenePath);
+                ApplyBootstrapScene(bootstrap, report);
+                EditorSceneManager.MarkSceneDirty(bootstrap);
+                if (!EditorSceneManager.SaveScene(bootstrap, BootstrapScenePath))
+                {
+                    throw new InvalidOperationException("Bootstrap scene could not be saved.");
+                }
+
+                Scene mainMenu = OpenOrCreateEmptyScene(MainMenuScenePath);
+                // Opening/saving multiple scenes can release asset object instances that are no
+                // longer referenced by the active scene. Resolve project assets immediately before
+                // wiring the menu so the serialized references always use the current instances.
+                intent = AssetDatabase.LoadAssetAtPath<SessionIntent>(SessionIntentPath);
+                interfaceText = AssetDatabase.LoadAssetAtPath<InterfaceTextDefinition>(
+                    InterfaceTextPath);
+                turkishFont = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(TurkishFontPath);
+                ApplyMainMenuScene(mainMenu, intent, interfaceText, turkishFont, report);
+                EditorSceneManager.MarkSceneDirty(mainMenu);
+                if (!EditorSceneManager.SaveScene(mainMenu, MainMenuScenePath))
+                {
+                    throw new InvalidOperationException("MainMenu scene could not be saved.");
+                }
+
+                ApplyBuildScenes();
 
                 AssetDatabase.SaveAssets();
 
@@ -263,7 +296,7 @@ namespace RoyalDecisions.Editor
         {
             SceneSetupReport report = new SceneSetupReport(operation);
 
-            if (!Application.isBatchMode
+            if (!UnityEngine.Application.isBatchMode
                 && !EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
             {
                 report.Add(SceneSetupIssueSeverity.Error, "UNSAVED_SCENES", "Safety",
@@ -283,7 +316,7 @@ namespace RoyalDecisions.Editor
             }
             finally
             {
-                if (!Application.isBatchMode && originalSetup != null && originalSetup.Length > 0)
+                if (!UnityEngine.Application.isBatchMode && originalSetup != null && originalSetup.Length > 0)
                 {
                     EditorSceneManager.RestoreSceneManagerSetup(originalSetup);
                 }
@@ -319,6 +352,13 @@ namespace RoyalDecisions.Editor
             else
             {
                 ValidateTheme(theme, report);
+            }
+            if (AssetDatabase.LoadAssetAtPath<FeedbackCueProfile>(
+                    DefaultFeedbackCueProfilePath) == null)
+            {
+                report.Add(SceneSetupIssueSeverity.Error, "FEEDBACK_PROFILE_MISSING", "Assets",
+                    DefaultFeedbackCueProfilePath, string.Empty,
+                    "Default feedback cue profile is missing or invalid.");
             }
 
             if (catalogue == null)
@@ -388,6 +428,7 @@ namespace RoyalDecisions.Editor
                 AssetDatabase.LoadAssetAtPath<InterfaceTextDefinition>(InterfaceTextPath),
                 AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(TurkishFontPath),
                 AssetDatabase.LoadAssetAtPath<GameUITheme>(DefaultThemePath),
+                AssetDatabase.LoadAssetAtPath<FeedbackCueProfile>(DefaultFeedbackCueProfilePath),
                 report);
         }
 
@@ -398,6 +439,7 @@ namespace RoyalDecisions.Editor
             InterfaceTextDefinition interfaceText,
             TMP_FontAsset font,
             GameUITheme theme,
+            FeedbackCueProfile feedback,
             SceneSetupReport report)
         {
             if (!PreflightGameScene(scene, report))
@@ -422,6 +464,7 @@ namespace RoyalDecisions.Editor
             HUDView hud = ConfigureHud(safeArea, interfaceText, font, report);
             FooterParts footer = ConfigureFooter(safeArea, interfaceText, font, report);
             CardParts card = ConfigureCard(safeArea, font, report);
+            TutorialParts tutorial = ConfigureTutorial(safeArea, font, report);
             GameOverParts gameOver = ConfigureGameOver(
                 canvasObject, safeArea, interfaceText, font, report);
             AudioService audio = ConfigureAudio(scene, report);
@@ -441,8 +484,37 @@ namespace RoyalDecisions.Editor
                 SetObjectProperty(controller, "footerView", footer.Footer, report);
                 SetObjectProperty(controller, "audioService", audio, report);
                 SetObjectProperty(controller, "sessionIntent", intent, report);
+                SetObjectProperty(controller, "tutorialCoordinator", tutorial.Coordinator, report);
                 SetEnumProperty(controller, "fallbackStartMode", (int)SessionStartMode.NewGame, report);
             }
+
+            AccessibilityPresentationController accessibility =
+                EnsureSingleComponent<AccessibilityPresentationController>(controllerObject, report);
+            TextMeshProUGUI[] accessibleText = FindComponentsInScene<TextMeshProUGUI>(scene);
+            SetObjectArrayProperty(accessibility, "scalableText", accessibleText, report);
+            SetObjectArrayProperty(accessibility, "secondaryText", new[]
+            {
+                card.View != null ? card.View.GetComponentInChildren<TextMeshProUGUI>(true) : null,
+                footer.Root != null ? footer.Root.GetComponentInChildren<TextMeshProUGUI>(true) : null
+            }, report);
+            SetObjectProperty(accessibility, "swipeController", card.Swipe, report);
+            SetObjectArrayProperty(accessibility, "statItems",
+                hud != null ? hud.GetComponentsInChildren<StatItemView>(true) : Array.Empty<StatItemView>(),
+                report);
+
+            GameFeedbackController feedbackController =
+                EnsureSingleComponent<GameFeedbackController>(controllerObject, report);
+            SetObjectProperty(feedbackController, "gameSceneController", controller, report);
+            SetObjectProperty(feedbackController, "swipeController", card.Swipe, report);
+            SetObjectProperty(feedbackController, "audioService", audio, report);
+            SetObjectProperty(feedbackController, "cues", feedback, report);
+
+            ApplicationLifecycleController lifecycle =
+                EnsureSingleComponent<ApplicationLifecycleController>(controllerObject, report);
+            SetObjectProperty(lifecycle, "gameSceneController", controller, report);
+            SetObjectProperty(lifecycle, "tutorialCoordinator", tutorial.Coordinator, report);
+            SetStringProperty(lifecycle, "mainMenuSceneName", "MainMenu", report);
+            SetBoolProperty(lifecycle, "mainMenuMode", false, report);
 
             GameUIThemeController themeController = EnsureSingleComponent<GameUIThemeController>(
                 canvasObject, report);
@@ -466,12 +538,14 @@ namespace RoyalDecisions.Editor
                 SetSiblingIndex(safeArea, 1);
             }
 
-            if (hud != null && card.Area != null && footer.Root != null && gameOver.Root != null)
+            if (hud != null && card.Area != null && footer.Root != null
+                && tutorial.Root != null && gameOver.Root != null)
             {
                 SetSiblingIndex(hud.transform, 0);
                 SetSiblingIndex(card.Area, 1);
                 SetSiblingIndex(footer.Root, 2);
-                SetSiblingIndex(gameOver.Root, 3);
+                SetSiblingIndex(tutorial.Root, 3);
+                SetSiblingIndex(gameOver.Root, 4);
             }
 
             // TMP auto-sizing stores both its configured base size and its last calculated size.
@@ -550,21 +624,32 @@ namespace RoyalDecisions.Editor
             RectTransform artworkTransform = EnsureUiChild(root, "Artwork", report);
             RectTransform overlayTransform = EnsureUiChild(root, "DarkOverlay", report);
             RectTransform vignetteTransform = EnsureUiChild(root, "Vignette", report);
+            RectTransform proceduralTransform = EnsureUiChild(root, "ProceduralVignette", report);
             Stretch(artworkTransform);
             Stretch(overlayTransform);
             Stretch(vignetteTransform);
+            Stretch(proceduralTransform);
             Image artwork = EnsureSingleComponent<Image>(artworkTransform.gameObject, report);
             Image overlay = EnsureSingleComponent<Image>(overlayTransform.gameObject, report);
             Image vignette = EnsureSingleComponent<Image>(vignetteTransform.gameObject, report);
             ConfigureSimpleImage(artwork, null, Color.white, false, false);
             ConfigureSimpleImage(overlay, null, new Color(0f, 0f, 0f, 0.28f), false);
             ConfigureSimpleImage(vignette, null, Color.white, false, false);
+            ProceduralVignetteGraphic procedural =
+                EnsureSingleComponent<ProceduralVignetteGraphic>(proceduralTransform.gameObject, report);
+            if (procedural != null)
+            {
+                Undo.RecordObject(procedural, "Configure procedural vignette");
+                procedural.raycastTarget = false;
+                procedural.SetStyle(Color.black, 0.22f, 0.42f);
+            }
 
             BackgroundView view = EnsureSingleComponent<BackgroundView>(root.gameObject, report);
             SetObjectProperty(view, "fallbackSurface", surface, report);
             SetObjectProperty(view, "artwork", artwork, report);
             SetObjectProperty(view, "darkOverlay", overlay, report);
             SetObjectProperty(view, "vignette", vignette, report);
+            SetObjectProperty(view, "proceduralVignette", procedural, report);
             return view;
         }
 
@@ -576,7 +661,7 @@ namespace RoyalDecisions.Editor
         {
             RectTransform hudTransform = EnsureUiChild(safeArea, "HUD", report);
             SetRect(hudTransform, new Vector2(0f, 1f), new Vector2(1f, 1f),
-                Vector2.zero, new Vector2(0f, 176f), new Vector2(0.5f, 1f));
+                Vector2.zero, new Vector2(0f, 208f), new Vector2(0.5f, 1f));
 
             HUDView hud = EnsureSingleComponent<HUDView>(hudTransform.gameObject, report);
             Image hudSurface = EnsureSingleComponent<Image>(hudTransform.gameObject, report);
@@ -587,8 +672,8 @@ namespace RoyalDecisions.Editor
             {
                 Undo.RecordObject(layout, "Configure HUD layout");
                 layout.childAlignment = TextAnchor.MiddleCenter;
-                layout.padding = new RectOffset(16, 16, 12, 12);
-                layout.spacing = 12f;
+                layout.padding = new RectOffset(12, 12, 12, 12);
+                layout.spacing = 8f;
                 layout.childControlWidth = true;
                 layout.childControlHeight = true;
                 layout.childForceExpandWidth = true;
@@ -630,7 +715,7 @@ namespace RoyalDecisions.Editor
                 }
                 itemTransform ??= EnsureUiChild(slot, statNames[i], report);
                 SetRect(itemTransform, new Vector2(0.08f, 0f), new Vector2(0.92f, 0f),
-                    new Vector2(0f, 5f), new Vector2(0f, 18f), new Vector2(0.5f, 0f));
+                    new Vector2(0f, 6f), new Vector2(0f, 24f), new Vector2(0.5f, 0f));
 
                 Image background = EnsureSingleComponent<Image>(itemTransform.gameObject, report);
                 StatItemView item = EnsureSingleComponent<StatItemView>(
@@ -672,7 +757,7 @@ namespace RoyalDecisions.Editor
                     Vector2.zero, Vector2.zero, Center);
                 TextMeshProUGUI label = EnsureSingleComponent<TextMeshProUGUI>(
                     labelTransform.gameObject, report);
-                ConfigureReadableText(label, font, 22f, 18f, 24f, true, false, 0f);
+                ConfigureReadableText(label, font, 25f, 22f, 28f, true, false, 0f);
 
                 RectTransform valueTransform = FindDirectChild(slot, "Value", report);
                 RectTransform legacyValue = FindDirectChild(itemTransform, "Value", report);
@@ -686,7 +771,7 @@ namespace RoyalDecisions.Editor
                     Vector2.zero, Vector2.zero, Center);
                 TextMeshProUGUI value = EnsureSingleComponent<TextMeshProUGUI>(
                     valueTransform.gameObject, report);
-                ConfigureReadableText(value, font, 30f, 24f, 34f, true, false, 0f);
+                ConfigureReadableText(value, font, 36f, 32f, 40f, true, false, 0f);
 
                 RectTransform impactTransform = EnsureUiChild(slot, "Impact", report);
                 SetRect(impactTransform, new Vector2(0.66f, 0.18f), new Vector2(0.94f, 0.58f),
@@ -695,7 +780,7 @@ namespace RoyalDecisions.Editor
                     impactTransform.gameObject, report);
                 CanvasGroup impactGroup = EnsureSingleComponent<CanvasGroup>(
                     impactTransform.gameObject, report);
-                ConfigureReadableText(impact, font, 24f, 18f, 28f, true, false, 0f);
+                ConfigureReadableText(impact, font, 27f, 24f, 30f, true, false, 0f);
                 impact.text = string.Empty;
                 impactGroup.alpha = 0f;
 
@@ -704,7 +789,7 @@ namespace RoyalDecisions.Editor
                     Vector2.zero, Vector2.zero, Center);
                 TextMeshProUGUI critical = EnsureSingleComponent<TextMeshProUGUI>(
                     criticalTransform.gameObject, report);
-                ConfigureReadableText(critical, font, 26f, 20f, 30f, true, false, 0f);
+                ConfigureReadableText(critical, font, 27f, 24f, 30f, true, false, 0f);
                 critical.text = "!";
                 critical.gameObject.SetActive(false);
 
@@ -763,7 +848,7 @@ namespace RoyalDecisions.Editor
             }
             root ??= EnsureUiChild(safeArea, "Footer", report);
             SetRect(root, new Vector2(0f, 0f), new Vector2(1f, 0f),
-                Vector2.zero, new Vector2(0f, 80f), new Vector2(0.5f, 0f));
+                Vector2.zero, new Vector2(0f, 96f), new Vector2(0.5f, 0f));
 
             HorizontalLayoutGroup layout = EnsureSingleComponent<HorizontalLayoutGroup>(
                 root.gameObject, report);
@@ -799,9 +884,9 @@ namespace RoyalDecisions.Editor
             TextMeshProUGUI progress = EnsureSingleComponent<TextMeshProUGUI>(
                 progressTransform.gameObject, report);
             Image seal = EnsureSingleComponent<Image>(sealTransform.gameObject, report);
-            ConfigureReadableText(reign, font, 26f, 22f, 28f, true, false, 0f);
-            ConfigureReadableText(ruler, font, 26f, 22f, 28f, true, false, 0f);
-            ConfigureReadableText(progress, font, 24f, 20f, 26f, true, false, 0f);
+            ConfigureReadableText(reign, font, 30f, 26f, 34f, true, false, 0f);
+            ConfigureReadableText(ruler, font, 26f, 22f, 30f, true, false, 0f);
+            ConfigureReadableText(progress, font, 26f, 22f, 30f, true, false, 0f);
             reign.text = string.Format("{0} 1", interfaceText != null ? interfaceText.Turn : "Tur");
             ruler.text = "Royal Decisions";
             progress.text = string.Empty;
@@ -923,6 +1008,31 @@ namespace RoyalDecisions.Editor
             element.flexibleHeight = 0f;
         }
 
+        private static void ConfigureMinimumTouchTarget(
+            Button button,
+            SceneSetupReport report)
+        {
+            if (button == null)
+            {
+                return;
+            }
+            RectTransform rect = button.transform as RectTransform;
+            if (rect != null && (rect.sizeDelta.x < 96f || rect.sizeDelta.y < 96f))
+            {
+                Undo.RecordObject(rect, "Configure minimum touch target");
+                rect.sizeDelta = new Vector2(
+                    Mathf.Max(96f, rect.sizeDelta.x),
+                    Mathf.Max(96f, rect.sizeDelta.y));
+            }
+            LayoutElement layout = button.GetComponent<LayoutElement>();
+            if (layout != null)
+            {
+                Undo.RecordObject(layout, "Configure minimum touch target layout");
+                layout.minWidth = Mathf.Max(96f, layout.minWidth);
+                layout.minHeight = Mathf.Max(96f, layout.minHeight);
+            }
+        }
+
         private static void ConfigureStatFill(Image fill, Sprite sprite, Color colour)
         {
             if (fill == null || (fill.sprite == sprite
@@ -952,8 +1062,8 @@ namespace RoyalDecisions.Editor
             SceneSetupReport report)
         {
             RectTransform area = EnsureUiChild(safeArea, "CardArea", report);
-            SetRect(area, Vector2.zero, Vector2.one, new Vector2(0f, -44f),
-                new Vector2(-48f, -312f), Center);
+            SetRect(area, Vector2.zero, Vector2.one, new Vector2(0f, -56f),
+                new Vector2(-40f, -336f), Center);
 
             RectTransform nextCard = EnsureUiChild(area, "NextCard", report);
             Image nextSurface = EnsureSingleComponent<Image>(nextCard.gameObject, report);
@@ -973,7 +1083,7 @@ namespace RoyalDecisions.Editor
             {
                 Undo.RecordObject(outline, "Configure card outline");
                 outline.effectColor = BorderGoldColour;
-                outline.effectDistance = new Vector2(3f, -3f);
+                outline.effectDistance = new Vector2(1.25f, -1.25f);
                 outline.useGraphicAlpha = true;
             }
 
@@ -981,6 +1091,11 @@ namespace RoyalDecisions.Editor
             Stretch(frameTransform);
             Image frame = EnsureSingleComponent<Image>(frameTransform.gameObject, report);
             ConfigureOptionalSlicedImage(frame, null, BorderGoldColour);
+
+            RectTransform temporaryBorder = EnsureUiChild(card, "TemporaryBorder", report);
+            Stretch(temporaryBorder);
+            Image[] temporaryBorders = ConfigureTemporaryCardBorders(
+                temporaryBorder, LoadBuiltInUiSprite(report), report);
 
             RectTransform portraitRegion = EnsureUiChild(card, "PortraitRegion", report);
             SetRect(portraitRegion, new Vector2(0.07f, 0.50f), new Vector2(0.93f, 0.93f),
@@ -1017,6 +1132,9 @@ namespace RoyalDecisions.Editor
                 portrait.preserveAspect = false;
             }
 
+            PortraitFallbackView portraitFallback = ConfigurePortraitFallback(
+                portraitMask, portraitTransform, report);
+
             RectTransform speakerTransform = EnsureUiChild(card, "Speaker", report);
             SetRect(speakerTransform, new Vector2(0.09f, 0.42f), new Vector2(0.91f, 0.50f),
                 Vector2.zero, Vector2.zero, Center);
@@ -1027,8 +1145,8 @@ namespace RoyalDecisions.Editor
                 Vector2.zero, Vector2.zero, Center);
             TextMeshProUGUI body = EnsureSingleComponent<TextMeshProUGUI>(
                 bodyTransform.gameObject, report);
-            ConfigureReadableText(speaker, font, 32f, 26f, 36f, true, false, 3f);
-            ConfigureReadableText(body, font, 40f, 32f, 44f, true, true, 4f);
+            ConfigureReadableText(speaker, font, 34f, 28f, 38f, true, false, 3f);
+            ConfigureReadableText(body, font, 42f, 34f, 46f, true, true, 6f);
             SetTextColour(speaker, SpeakerTextColour);
             SetTextColour(body, BodyTextColour);
 
@@ -1074,6 +1192,8 @@ namespace RoyalDecisions.Editor
                 SetObjectProperty(view, "portraitFrameImage", portraitFrame, report);
                 SetObjectProperty(view, "portraitMaskImage", maskImage, report);
                 SetObjectArrayProperty(view, "cornerImages", corners, report);
+                SetObjectArrayProperty(view, "temporaryBorderImages", temporaryBorders, report);
+                SetObjectProperty(view, "portraitFallbackView", portraitFallback, report);
                 SetObjectProperty(view, "nextCardRoot", nextCard.gameObject, report);
                 SetObjectProperty(view, "nextCardSurface", nextSurface, report);
                 SetObjectProperty(view, "nextCardFrame", nextFrame, report);
@@ -1089,16 +1209,103 @@ namespace RoyalDecisions.Editor
                 area.gameObject, report);
             SetObjectProperty(sizer, "card", card, report);
             SetObjectProperty(sizer, "nextCard", nextCard, report);
+            SetObjectProperty(sizer, "widthReference", safeArea, report);
+            SetFloatProperty(sizer, "preferredWidthRatio", 0.78f, report);
+            SetFloatProperty(sizer, "maximumWidth", 920f, report);
             sizer?.RecalculateLayout();
 
             SetSiblingIndex(nextCard, 0);
             SetSiblingIndex(card, 1);
             SetSiblingIndex(frameTransform, 0);
-            SetSiblingIndex(portraitRegion, 1);
-            SetSiblingIndex(speakerTransform, 2);
-            SetSiblingIndex(bodyTransform, 3);
+            SetSiblingIndex(temporaryBorder, 1);
+            SetSiblingIndex(portraitRegion, 2);
+            SetSiblingIndex(speakerTransform, 3);
+            SetSiblingIndex(bodyTransform, 4);
 
             return new CardParts(area, view, swipe);
+        }
+
+        private static Image[] ConfigureTemporaryCardBorders(
+            RectTransform root,
+            Sprite sprite,
+            SceneSetupReport report)
+        {
+            string[] names = { "Top", "Right", "Bottom", "Left" };
+            Vector2[] minimums =
+            {
+                new Vector2(0f, 1f), new Vector2(1f, 0f), Vector2.zero, Vector2.zero
+            };
+            Vector2[] maximums =
+            {
+                Vector2.one, Vector2.one, new Vector2(1f, 0f), new Vector2(0f, 1f)
+            };
+            Vector2[] sizes =
+            {
+                new Vector2(0f, 1.25f), new Vector2(1.25f, 0f),
+                new Vector2(0f, 1.25f), new Vector2(1.25f, 0f)
+            };
+            Vector2[] pivots =
+            {
+                new Vector2(0.5f, 1f), new Vector2(1f, 0.5f),
+                new Vector2(0.5f, 0f), new Vector2(0f, 0.5f)
+            };
+            Image[] images = new Image[names.Length];
+            for (int i = 0; i < names.Length; i++)
+            {
+                RectTransform edge = EnsureUiChild(root, names[i], report);
+                SetRect(edge, minimums[i], maximums[i], Vector2.zero, sizes[i], pivots[i]);
+                images[i] = EnsureSingleComponent<Image>(edge.gameObject, report);
+                ConfigureSimpleImage(images[i], sprite, BorderGoldColour, false);
+                SetSiblingIndex(edge, i);
+            }
+            return images;
+        }
+
+        private static PortraitFallbackView ConfigurePortraitFallback(
+            RectTransform portraitMask,
+            RectTransform portrait,
+            SceneSetupReport report)
+        {
+            RectTransform root = EnsureUiChild(portraitMask, "FallbackSilhouette", report);
+            Stretch(root);
+            PortraitFallbackView view = EnsureSingleComponent<PortraitFallbackView>(
+                root.gameObject, report);
+            Sprite sprite = LoadBuiltInUiSprite(report);
+            Image backdrop = ConfigureFallbackShape(
+                root, "Backdrop", Vector2.zero, Vector2.one, OverallBackgroundColour, sprite, report);
+            Image head = ConfigureFallbackShape(
+                root, "Head", new Vector2(0.36f, 0.55f), new Vector2(0.64f, 0.80f),
+                SecondaryTextColour, sprite, report);
+            Image shoulders = ConfigureFallbackShape(
+                root, "Shoulders", new Vector2(0.225f, 0.25f), new Vector2(0.775f, 0.57f),
+                SecondaryTextColour, sprite, report);
+            Image torso = ConfigureFallbackShape(
+                root, "Torso", new Vector2(0.34f, 0.175f), new Vector2(0.66f, 0.45f),
+                SecondaryTextColour, sprite, report);
+            SetObjectProperty(view, "visualRoot", root.gameObject, report);
+            SetObjectProperty(view, "backdrop", backdrop, report);
+            SetObjectProperty(view, "head", head, report);
+            SetObjectProperty(view, "shoulders", shoulders, report);
+            SetObjectProperty(view, "torso", torso, report);
+            SetSiblingIndex(root, 0);
+            SetSiblingIndex(portrait, 1);
+            return view;
+        }
+
+        private static Image ConfigureFallbackShape(
+            RectTransform parent,
+            string name,
+            Vector2 anchorMin,
+            Vector2 anchorMax,
+            Color colour,
+            Sprite sprite,
+            SceneSetupReport report)
+        {
+            RectTransform transform = EnsureUiChild(parent, name, report);
+            SetRect(transform, anchorMin, anchorMax, Vector2.zero, Vector2.zero, Center);
+            Image image = EnsureSingleComponent<Image>(transform.gameObject, report);
+            ConfigureSimpleImage(image, sprite, colour, false);
+            return image;
         }
 
         private static ChoicePreviewView ConfigurePreview(
@@ -1163,7 +1370,7 @@ namespace RoyalDecisions.Editor
                 Vector2.zero, Vector2.zero, Center);
             TextMeshProUGUI label = EnsureSingleComponent<TextMeshProUGUI>(
                 labelTransform.gameObject, report);
-            ConfigureReadableText(label, font, 28f, 24f, 32f, true, true, 4f);
+            ConfigureReadableText(label, font, 30f, 26f, 34f, true, true, 4f);
 
             if (view != null)
             {
@@ -1179,6 +1386,49 @@ namespace RoyalDecisions.Editor
             SetSiblingIndex(labelTransform, 2);
 
             return view;
+        }
+
+        private static TutorialParts ConfigureTutorial(
+            RectTransform safeArea,
+            TMP_FontAsset font,
+            SceneSetupReport report)
+        {
+            RectTransform root = EnsureUiChild(safeArea, "TutorialOverlay", report);
+            Stretch(root);
+            Image surface = EnsureSingleComponent<Image>(root.gameObject, report);
+            ConfigureSimpleImage(surface, LoadBuiltInUiSprite(report), OverallBackgroundColour, true);
+
+            RectTransform content = EnsureUiChild(root, "Content", report);
+            SetRect(content, new Vector2(0.08f, 0.20f), new Vector2(0.92f, 0.80f),
+                Vector2.zero, Vector2.zero, Center);
+            TextMeshProUGUI title = EnsureText(content, "Title", new Vector2(0f, 260f),
+                new Vector2(860f, 140f), 54f, report);
+            TextMeshProUGUI body = EnsureText(content, "Body", new Vector2(0f, 40f),
+                new Vector2(860f, 300f), 38f, report);
+            ConfigureReadableText(title, font, 54f, 44f, 58f, true, true, 3f);
+            ConfigureReadableText(body, font, 38f, 32f, 42f, true, true, 6f);
+            Button next = EnsureMenuButton(content, "NextButton", "İleri", -190f, report);
+            Button skip = EnsureMenuButton(content, "SkipButton", "Atla", -330f, report);
+            ConfigureMinimumTouchTarget(next, report);
+            ConfigureMinimumTouchTarget(skip, report);
+
+            TutorialOverlayView view = EnsureSingleComponent<TutorialOverlayView>(
+                root.gameObject, report);
+            SetObjectProperty(view, "panelRoot", root.gameObject, report);
+            SetObjectProperty(view, "titleText", title, report);
+            SetObjectProperty(view, "bodyText", body, report);
+            SetObjectProperty(view, "nextButton", next, report);
+            SetObjectProperty(view, "skipButton", skip, report);
+            TutorialCoordinator coordinator = EnsureSingleComponent<TutorialCoordinator>(
+                root.gameObject, report);
+            SetObjectProperty(coordinator, "view", view, report);
+
+            if (root.gameObject.activeSelf)
+            {
+                Undo.RecordObject(root.gameObject, "Deactivate tutorial overlay");
+                root.gameObject.SetActive(false);
+            }
+            return new TutorialParts(root, view, coordinator);
         }
 
         private static GameOverParts ConfigureGameOver(
@@ -1280,11 +1530,11 @@ namespace RoyalDecisions.Editor
             SetSiblingIndex(restartText.transform, 0);
             SetSiblingIndex(content, 0);
 
-            DeactivateLegacyGameOverChild(panel, "Illustration", illustrationTransform);
-            DeactivateLegacyGameOverChild(panel, "Title", titleTransform);
-            DeactivateLegacyGameOverChild(panel, "Body", bodyTransform);
-            DeactivateLegacyGameOverChild(panel, "BODY", bodyTransform);
-            DeactivateLegacyGameOverChild(panel, "RestartButton", restartTransform);
+            RemoveSafeLegacyGameOverChild(panel, "Illustration", illustrationTransform, report);
+            RemoveSafeLegacyGameOverChild(panel, "Title", titleTransform, report);
+            RemoveSafeLegacyGameOverChild(panel, "Body", bodyTransform, report);
+            RemoveSafeLegacyGameOverChild(panel, "BODY", bodyTransform, report);
+            RemoveSafeLegacyGameOverChild(panel, "RestartButton", restartTransform, report);
 
             if (panel.gameObject.activeSelf)
             {
@@ -1295,25 +1545,174 @@ namespace RoyalDecisions.Editor
             return new GameOverParts(panel, view);
         }
 
-        private static void DeactivateLegacyGameOverChild(
+        private static void RemoveSafeLegacyGameOverChild(
             RectTransform panel,
             string childName,
-            RectTransform activeReplacement)
+            RectTransform activeReplacement,
+            SceneSetupReport report)
         {
             Transform legacy = panel != null ? panel.Find(childName) : null;
-            if (legacy == null || legacy == activeReplacement || !legacy.gameObject.activeSelf)
+            if (legacy == null || legacy == activeReplacement)
             {
                 return;
             }
+            if (!CanRemoveLegacyGameOverObject(legacy.gameObject, activeReplacement, out string reason))
+            {
+                AddInvalid(report, panel.gameObject.scene.path, HierarchyPath(legacy),
+                    "Obsolete GameOver child is ambiguous and was preserved: " + reason);
+                return;
+            }
+            Undo.DestroyObjectImmediate(legacy.gameObject);
+        }
 
-            Undo.RecordObject(legacy.gameObject, "Deactivate legacy game-over UI");
-            legacy.gameObject.SetActive(false);
+        private static bool CanRemoveLegacyGameOverObject(
+            GameObject legacy,
+            RectTransform replacement,
+            out string reason)
+        {
+            if (legacy.activeSelf)
+            {
+                reason = "object is active";
+                return false;
+            }
+            if (replacement == null || replacement.parent == legacy.transform.parent)
+            {
+                reason = "the managed Content replacement is missing";
+                return false;
+            }
+            Component required = legacy.name switch
+            {
+                "Illustration" => legacy.GetComponent<Image>(),
+                "Title" => legacy.GetComponent<TextMeshProUGUI>(),
+                "Body" => legacy.GetComponent<TextMeshProUGUI>(),
+                "BODY" => legacy.GetComponent<TextMeshProUGUI>(),
+                "RestartButton" => legacy.GetComponent<Button>(),
+                _ => null
+            };
+            if (required == null)
+            {
+                reason = "component signature is not the known legacy signature";
+                return false;
+            }
+
+            Component[] components = legacy.GetComponentsInChildren<Component>(true);
+            for (int i = 0; i < components.Length; i++)
+            {
+                Component component = components[i];
+                if (component == null)
+                {
+                    reason = "object contains a missing-script component";
+                    return false;
+                }
+                if (component is Transform || component is CanvasRenderer || component is Image
+                    || component is Button || component is TextMeshProUGUI)
+                {
+                    continue;
+                }
+                reason = "object contains unexpected component " + component.GetType().Name;
+                return false;
+            }
+
+            Button[] buttons = legacy.GetComponentsInChildren<Button>(true);
+            for (int i = 0; i < buttons.Length; i++)
+            {
+                if (buttons[i].onClick.GetPersistentEventCount() != 0
+                    && !HasOnlyMatchingManagedRestartListener(
+                        buttons[i], replacement.GetComponent<Button>()))
+                {
+                    reason = "object contains a persistent button listener that does not exactly "
+                        + "match the managed replacement";
+                    return false;
+                }
+            }
+
+            if (HasExternalSerializedReference(legacy))
+            {
+                reason = "another scene component serializes a reference to it";
+                return false;
+            }
+            reason = string.Empty;
+            return true;
+        }
+
+        private static bool HasOnlyMatchingManagedRestartListener(
+            Button legacy,
+            Button replacement)
+        {
+            if (legacy == null || replacement == null
+                || legacy.onClick.GetPersistentEventCount() != 1
+                || replacement.onClick.GetPersistentEventCount() != 1)
+            {
+                return false;
+            }
+
+            Object legacyTarget = legacy.onClick.GetPersistentTarget(0);
+            string legacyMethod = legacy.onClick.GetPersistentMethodName(0);
+            return legacyTarget is GameOverView
+                && legacyMethod == nameof(GameOverView.HandleRestartButton)
+                && replacement.onClick.GetPersistentTarget(0) == legacyTarget
+                && replacement.onClick.GetPersistentMethodName(0) == legacyMethod
+                && replacement.onClick.GetPersistentListenerState(0)
+                    == legacy.onClick.GetPersistentListenerState(0);
+        }
+
+        private static bool HasExternalSerializedReference(GameObject candidate)
+        {
+            HashSet<Object> owned = new HashSet<Object> { candidate };
+            Component[] ownedComponents = candidate.GetComponentsInChildren<Component>(true);
+            for (int i = 0; i < ownedComponents.Length; i++)
+            {
+                if (ownedComponents[i] != null)
+                {
+                    owned.Add(ownedComponents[i]);
+                    owned.Add(ownedComponents[i].gameObject);
+                }
+            }
+
+            Component[] sceneComponents = FindComponentsInScene<Component>(candidate.scene);
+            for (int i = 0; i < sceneComponents.Length; i++)
+            {
+                Component owner = sceneComponents[i];
+                if (owner == null || owned.Contains(owner))
+                {
+                    continue;
+                }
+                SerializedObject serialized = new SerializedObject(owner);
+                SerializedProperty iterator = serialized.GetIterator();
+                if (!iterator.Next(true))
+                {
+                    continue;
+                }
+                do
+                {
+                    if (iterator.propertyType == SerializedPropertyType.ObjectReference
+                        && owned.Contains(iterator.objectReferenceValue))
+                    {
+                        return true;
+                    }
+                }
+                while (iterator.NextVisible(true));
+            }
+            return false;
         }
 
         private static AudioService ConfigureAudio(Scene scene, SceneSetupReport report)
         {
             GameObject audioObject = EnsureRoot(scene, "AudioService", report);
             AudioSource source = EnsureSingleComponent<AudioSource>(audioObject, report);
+            Transform musicTransform = audioObject.transform.Find("MusicSource");
+            GameObject musicObject;
+            if (musicTransform == null)
+            {
+                musicObject = new GameObject("MusicSource");
+                Undo.RegisterCreatedObjectUndo(musicObject, "Create music AudioSource");
+                musicObject.transform.SetParent(audioObject.transform, false);
+            }
+            else
+            {
+                musicObject = musicTransform.gameObject;
+            }
+            AudioSource music = EnsureSingleComponent<AudioSource>(musicObject, report);
             AudioService service = EnsureSingleComponent<AudioService>(audioObject, report);
             if (source != null)
             {
@@ -1322,10 +1721,18 @@ namespace RoyalDecisions.Editor
                 source.loop = false;
                 source.spatialBlend = 0f;
             }
+            if (music != null)
+            {
+                Undo.RecordObject(music, "Configure music audio source");
+                music.playOnAwake = false;
+                music.loop = true;
+                music.spatialBlend = 0f;
+            }
 
             if (service != null)
             {
                 SetObjectProperty(service, "audioSource", source, report);
+                SetObjectProperty(service, "musicSource", music, report);
             }
 
             return service;
@@ -1353,7 +1760,9 @@ namespace RoyalDecisions.Editor
             SceneSetupReport report)
         {
             if (!CheckRootDuplicates(scene, CanvasName, report)
-                || !CheckRootDuplicates(scene, "MainMenuController", report))
+                || !CheckRootDuplicates(scene, "MainMenuController", report)
+                || !CheckRootDuplicates(scene, "AudioService", report)
+                || !CheckRootDuplicates(scene, "SettingsController", report))
             {
                 return;
             }
@@ -1376,7 +1785,9 @@ namespace RoyalDecisions.Editor
             Button newGame = EnsureMenuButton(panel, "NewGameButton", "Yeni Oyun", 40f, report);
             Button continueButton = EnsureMenuButton(
                 panel, "ContinueButton", "Devam Et", -120f, report);
-            TextMeshProUGUI saveError = EnsureText(panel, "SaveError", new Vector2(0f, -300f),
+            Button settingsButton = EnsureMenuButton(
+                panel, "SettingsButton", "Ayarlar", -280f, report);
+            TextMeshProUGUI saveError = EnsureText(panel, "SaveError", new Vector2(0f, -430f),
                 new Vector2(850f, 150f), 30f, report);
             TextMeshProUGUI newGameText = newGame != null
                 ? newGame.GetComponentInChildren<TextMeshProUGUI>(true)
@@ -1386,6 +1797,9 @@ namespace RoyalDecisions.Editor
                 : null;
             ConfigureReadableText(newGameText, font, 40f, 34f, 42f, true, true, 2f);
             ConfigureReadableText(continueText, font, 40f, 34f, 42f, true, true, 2f);
+            ConfigureReadableText(settingsButton != null
+                ? settingsButton.GetComponentInChildren<TextMeshProUGUI>(true) : null,
+                font, 40f, 34f, 42f, true, true, 2f);
             ConfigureReadableText(saveError, font, 30f, 28f, 32f, true, true, 2f);
             saveError.text = string.Empty;
             saveError.gameObject.SetActive(false);
@@ -1416,6 +1830,170 @@ namespace RoyalDecisions.Editor
             EnsureExpectedListener(continueButton, controller,
                 nameof(MainMenuController.OnContinuePressed),
                 controller != null ? controller.OnContinuePressed : null, report);
+
+            AudioService audio = ConfigureAudio(scene, report);
+            SettingsParts settings = ConfigureSettingsPanel(safeArea, font, audio, report);
+            EnsureExpectedListener(settingsButton, settings.Controller,
+                nameof(SettingsController.Open),
+                settings.Controller != null ? settings.Controller.Open : null, report);
+            ConfigureMinimumTouchTarget(newGame, report);
+            ConfigureMinimumTouchTarget(continueButton, report);
+            ConfigureMinimumTouchTarget(settingsButton, report);
+
+            ApplicationLifecycleController lifecycle =
+                EnsureSingleComponent<ApplicationLifecycleController>(controllerObject, report);
+            SetBoolProperty(lifecycle, "mainMenuMode", true, report);
+            SetStringProperty(lifecycle, "mainMenuSceneName", "MainMenu", report);
+            SetObjectProperty(lifecycle, "settingsController", settings.Controller, report);
+        }
+
+        private static SettingsParts ConfigureSettingsPanel(
+            RectTransform safeArea,
+            TMP_FontAsset font,
+            AudioService audio,
+            SceneSetupReport report)
+        {
+            RectTransform root = EnsureUiChild(safeArea, "SettingsPanel", report);
+            Stretch(root);
+            Image surface = EnsureSingleComponent<Image>(root.gameObject, report);
+            ConfigureSimpleImage(surface, LoadBuiltInUiSprite(report), OverallBackgroundColour, true);
+            RectTransform content = EnsureUiChild(root, "Content", report);
+            SetRect(content, new Vector2(0.08f, 0.06f), new Vector2(0.92f, 0.94f),
+                Vector2.zero, Vector2.zero, Center);
+            TextMeshProUGUI title = EnsureText(content, "Title", new Vector2(0f, 610f),
+                new Vector2(840f, 110f), 52f, report);
+            title.text = "Ayarlar";
+            ConfigureReadableText(title, font, 52f, 44f, 56f, true, true, 2f);
+
+            Slider music = EnsureSliderControl(content, "MusicVolume", "Müzik", 450f, font, report);
+            Slider sfx = EnsureSliderControl(content, "SfxVolume", "Efekt", 310f, font, report);
+            Toggle mute = EnsureToggleControl(content, "MasterMute", "Sessiz", 160f, font, report);
+            Toggle haptics = EnsureToggleControl(content, "Haptics", "Titreşim", 40f, font, report);
+            Toggle reduced = EnsureToggleControl(
+                content, "ReducedMotion", "Azaltılmış Hareket", -80f, font, report);
+            Toggle larger = EnsureToggleControl(
+                content, "LargerText", "Büyük Metin", -200f, font, report);
+            Toggle contrast = EnsureToggleControl(
+                content, "HighContrast", "Yüksek Kontrast", -320f, font, report);
+            Button apply = EnsureMenuButton(content, "ApplyButton", "Uygula", -470f, report);
+            Button cancel = EnsureMenuButton(content, "CancelButton", "İptal", -590f, report);
+            Button reset = EnsureMenuButton(content, "ResetButton", "Sıfırla", -710f, report);
+            ConfigureReadableText(apply != null
+                    ? apply.GetComponentInChildren<TextMeshProUGUI>(true) : null,
+                font, 40f, 34f, 42f, true, true, 2f);
+            ConfigureReadableText(cancel != null
+                    ? cancel.GetComponentInChildren<TextMeshProUGUI>(true) : null,
+                font, 40f, 34f, 42f, true, true, 2f);
+            ConfigureReadableText(reset != null
+                    ? reset.GetComponentInChildren<TextMeshProUGUI>(true) : null,
+                font, 40f, 34f, 42f, true, true, 2f);
+            ConfigureMinimumTouchTarget(apply, report);
+            ConfigureMinimumTouchTarget(cancel, report);
+            ConfigureMinimumTouchTarget(reset, report);
+
+            SettingsPanelView view = EnsureSingleComponent<SettingsPanelView>(root.gameObject, report);
+            SetObjectProperty(view, "panelRoot", root.gameObject, report);
+            SetObjectProperty(view, "musicVolume", music, report);
+            SetObjectProperty(view, "sfxVolume", sfx, report);
+            SetObjectProperty(view, "masterMute", mute, report);
+            SetObjectProperty(view, "haptics", haptics, report);
+            SetObjectProperty(view, "reducedMotion", reduced, report);
+            SetObjectProperty(view, "largerText", larger, report);
+            SetObjectProperty(view, "highContrast", contrast, report);
+            SetObjectProperty(view, "applyButton", apply, report);
+            SetObjectProperty(view, "cancelButton", cancel, report);
+            SetObjectProperty(view, "resetButton", reset, report);
+
+            GameObject controllerObject = EnsureRoot(
+                root.gameObject.scene, "SettingsController", report);
+            SettingsController controller = EnsureSingleComponent<SettingsController>(
+                controllerObject, report);
+            SetObjectProperty(controller, "view", view, report);
+            SetObjectProperty(controller, "audioService", audio, report);
+
+            if (root.gameObject.activeSelf)
+            {
+                Undo.RecordObject(root.gameObject, "Deactivate settings panel");
+                root.gameObject.SetActive(false);
+            }
+            return new SettingsParts(root, view, controller);
+        }
+
+        private static Slider EnsureSliderControl(
+            RectTransform parent,
+            string name,
+            string labelText,
+            float y,
+            TMP_FontAsset font,
+            SceneSetupReport report)
+        {
+            RectTransform root = EnsureUiChild(parent, name, report);
+            SetRect(root, Center, Center, new Vector2(0f, y), new Vector2(780f, 110f), Center);
+            Image background = EnsureSingleComponent<Image>(root.gameObject, report);
+            ConfigureSimpleImage(background, LoadBuiltInUiSprite(report), StatBackgroundColour, true);
+            Slider slider = EnsureSingleComponent<Slider>(root.gameObject, report);
+            RectTransform fillArea = EnsureUiChild(root, "FillArea", report);
+            SetRect(fillArea, new Vector2(0.30f, 0.20f), new Vector2(0.88f, 0.80f),
+                Vector2.zero, Vector2.zero, Center);
+            RectTransform fillTransform = EnsureUiChild(fillArea, "Fill", report);
+            Stretch(fillTransform);
+            Image fill = EnsureSingleComponent<Image>(fillTransform.gameObject, report);
+            ConfigureSimpleImage(fill, LoadBuiltInUiSprite(report), BorderGoldColour, false);
+            RectTransform handleArea = EnsureUiChild(root, "HandleArea", report);
+            SetRect(handleArea, new Vector2(0.30f, 0.15f), new Vector2(0.88f, 0.85f),
+                Vector2.zero, Vector2.zero, Center);
+            RectTransform handleTransform = EnsureUiChild(handleArea, "Handle", report);
+            SetRect(handleTransform, Center, Center, Vector2.zero, new Vector2(72f, 72f), Center);
+            Image handle = EnsureSingleComponent<Image>(handleTransform.gameObject, report);
+            ConfigureSimpleImage(handle, LoadBuiltInUiSprite(report), BodyTextColour, true);
+            TextMeshProUGUI label = EnsureText(root, "Label", new Vector2(-270f, 0f),
+                new Vector2(220f, 90f), 30f, report);
+            label.text = labelText;
+            ConfigureReadableText(label, font, 30f, 26f, 34f, true, false, 2f);
+            if (slider != null)
+            {
+                Undo.RecordObject(slider, "Configure settings slider");
+                slider.minValue = 0f;
+                slider.maxValue = 1f;
+                slider.value = GameSettings.DefaultVolume;
+                slider.fillRect = fillTransform;
+                slider.handleRect = handleTransform;
+                slider.targetGraphic = handle;
+                slider.direction = Slider.Direction.LeftToRight;
+            }
+            return slider;
+        }
+
+        private static Toggle EnsureToggleControl(
+            RectTransform parent,
+            string name,
+            string labelText,
+            float y,
+            TMP_FontAsset font,
+            SceneSetupReport report)
+        {
+            RectTransform root = EnsureUiChild(parent, name, report);
+            SetRect(root, Center, Center, new Vector2(0f, y), new Vector2(780f, 100f), Center);
+            Image background = EnsureSingleComponent<Image>(root.gameObject, report);
+            ConfigureSimpleImage(background, LoadBuiltInUiSprite(report), SurfaceColour, true);
+            Toggle toggle = EnsureSingleComponent<Toggle>(root.gameObject, report);
+            RectTransform checkTransform = EnsureUiChild(root, "Checkmark", report);
+            SetRect(checkTransform, new Vector2(0.04f, 0.16f), new Vector2(0.13f, 0.84f),
+                Vector2.zero, Vector2.zero, Center);
+            Image check = EnsureSingleComponent<Image>(checkTransform.gameObject, report);
+            ConfigureSimpleImage(check, LoadBuiltInUiSprite(report), BorderGoldColour, false);
+            TextMeshProUGUI label = EnsureText(root, "Label", new Vector2(70f, 0f),
+                new Vector2(590f, 90f), 30f, report);
+            label.text = labelText;
+            ConfigureReadableText(label, font, 30f, 26f, 34f, true, false, 2f);
+            if (toggle != null)
+            {
+                Undo.RecordObject(toggle, "Configure settings toggle");
+                toggle.targetGraphic = background;
+                toggle.graphic = check;
+                toggle.isOn = false;
+            }
+            return toggle;
         }
 
         // Validation -----------------------------------------------------------------
@@ -1444,6 +2022,8 @@ namespace RoyalDecisions.Editor
             GameObject audioObject = RequirePath(scene, "/AudioService", report);
             GameObject controllerObject = RequirePath(scene, "/GameSceneController", report);
             GameObject footerObject = RequirePath(scene, "/UICanvas/SafeArea/Footer", report);
+            GameObject tutorialObject = RequirePath(
+                scene, "/UICanvas/SafeArea/TutorialOverlay", report);
 
             if (canvas != null)
             {
@@ -1475,14 +2055,42 @@ namespace RoyalDecisions.Editor
             {
                 RequireSingleComponent<SafeAreaFitter>(safeArea, scene.path, report);
             }
+            if (hudObject != null)
+            {
+                RectTransform rect = hudObject.transform as RectTransform;
+                HorizontalLayoutGroup layout = RequireSingleComponent<HorizontalLayoutGroup>(
+                    hudObject, scene.path, report);
+                if (rect == null || !Mathf.Approximately(rect.sizeDelta.y, 208f)
+                    || layout == null || !Mathf.Approximately(layout.spacing, 8f)
+                    || layout.padding.left != 12 || layout.padding.right != 12)
+                {
+                    AddInvalid(report, scene.path, "/UICanvas/SafeArea/HUD",
+                        "HUD height, padding, or spacing differs from the managed phone layout.");
+                }
+            }
 
             if (backgroundObject != null)
             {
-                RequireSingleComponent<BackgroundView>(backgroundObject, scene.path, report);
+                BackgroundView background = RequireSingleComponent<BackgroundView>(
+                    backgroundObject, scene.path, report);
                 ValidateNonRaycastImage(scene, "/UICanvas/Background", report);
                 ValidateNonRaycastImage(scene, "/UICanvas/Background/Artwork", report);
                 ValidateNonRaycastImage(scene, "/UICanvas/Background/DarkOverlay", report);
                 ValidateNonRaycastImage(scene, "/UICanvas/Background/Vignette", report);
+                GameObject proceduralObject = RequirePath(
+                    scene, "/UICanvas/Background/ProceduralVignette", report);
+                ProceduralVignetteGraphic procedural = proceduralObject != null
+                    ? RequireSingleComponent<ProceduralVignetteGraphic>(
+                        proceduralObject, scene.path, report)
+                    : null;
+                if (procedural != null && procedural.raycastTarget)
+                {
+                    AddInvalid(report, scene.path,
+                        "/UICanvas/Background/ProceduralVignette",
+                        "Procedural vignette must not block raycasts.");
+                }
+                ValidateReference(background, "proceduralVignette", procedural, scene.path,
+                    "/UICanvas/Background", report);
             }
 
             StatItemView[] statItems = new StatItemView[4];
@@ -1507,7 +2115,7 @@ namespace RoyalDecisions.Editor
                 GameObject itemObject = RequirePath(scene, itemPath, report);
                 GameObject fillObject = RequirePath(scene, itemPath + "/Fill", report);
                 GameObject iconObject = RequirePath(scene, slotPath + "/Icon", report);
-                GameObject fallbackObject = RequirePath(scene, slotPath + "/IconFallback", report);
+                GameObject iconFallbackObject = RequirePath(scene, slotPath + "/IconFallback", report);
                 GameObject nameObject = RequirePath(scene, slotPath + "/Name", report);
                 GameObject valueObject = RequirePath(scene, slotPath + "/Value", report);
                 GameObject impactObject = RequirePath(scene, slotPath + "/Impact", report);
@@ -1536,7 +2144,7 @@ namespace RoyalDecisions.Editor
                 if (item != null && (GetObjectProperty(item, "iconImage")
                         != (iconObject != null ? iconObject.GetComponent<Image>() : null)
                     || GetObjectProperty(item, "iconFallbackLabel")
-                        != (fallbackObject != null ? fallbackObject.GetComponent<TMP_Text>() : null)
+                        != (iconFallbackObject != null ? iconFallbackObject.GetComponent<TMP_Text>() : null)
                     || GetObjectProperty(item, "label")
                         != (nameObject != null ? nameObject.GetComponent<TMP_Text>() : null)
                     || GetObjectProperty(item, "valueText")
@@ -1553,6 +2161,12 @@ namespace RoyalDecisions.Editor
                 {
                     AddInvalid(report, scene.path, slotPath,
                         "HUD semantic visual order must be People, Security, Authority, Wealth.");
+                }
+                RectTransform itemRect = itemObject.transform as RectTransform;
+                if (itemRect == null || !Mathf.Approximately(itemRect.sizeDelta.y, 24f))
+                {
+                    AddInvalid(report, scene.path, itemPath,
+                        "HUD stat bar height must be 24 reference units.");
                 }
                 if (background != null && (background.sprite != uiSprite
                     || background.type != Image.Type.Simple
@@ -1642,11 +2256,63 @@ namespace RoyalDecisions.Editor
             }
             if (cardArea != null)
             {
-                RequireSingleComponent<ResponsiveCardSizer>(cardArea, scene.path, report);
+                ResponsiveCardSizer sizer = RequireSingleComponent<ResponsiveCardSizer>(
+                    cardArea, scene.path, report);
+                if (sizer != null
+                    && (GetObjectProperty(sizer, "widthReference")
+                            != (safeArea != null ? safeArea.transform : null)
+                        || !Mathf.Approximately(GetFloatProperty(sizer, "preferredWidthRatio"), 0.78f)
+                        || !Mathf.Approximately(GetFloatProperty(sizer, "maximumWidth"), 920f)))
+                {
+                    AddInvalid(report, scene.path, "/UICanvas/SafeArea/CardArea",
+                        "Responsive card sizing reference, phone ratio, or tablet cap is incorrect.");
+                }
                 RequirePath(scene, "/UICanvas/SafeArea/CardArea/NextCard", report);
+                RectTransform areaRect = cardArea.transform as RectTransform;
+                if (areaRect == null || areaRect.anchoredPosition != new Vector2(0f, -56f)
+                    || areaRect.sizeDelta != new Vector2(-40f, -336f))
+                {
+                    AddInvalid(report, scene.path, "/UICanvas/SafeArea/CardArea",
+                        "CardArea margins or HUD/footer reservations are incorrect.");
+                }
             }
             RequirePath(scene, "/UICanvas/SafeArea/CardArea/Card/PortraitRegion/PortraitMask/Portrait", report);
+            GameObject fallbackObject = RequirePath(scene,
+                "/UICanvas/SafeArea/CardArea/Card/PortraitRegion/PortraitMask/FallbackSilhouette",
+                report);
+            PortraitFallbackView portraitFallback = fallbackObject != null
+                ? RequireSingleComponent<PortraitFallbackView>(fallbackObject, scene.path, report)
+                : null;
             RequirePath(scene, "/UICanvas/SafeArea/CardArea/Card/Frame", report);
+            string[] borderNames = { "Top", "Right", "Bottom", "Left" };
+            Image[] borders = new Image[borderNames.Length];
+            for (int i = 0; i < borderNames.Length; i++)
+            {
+                string borderPath = "/UICanvas/SafeArea/CardArea/Card/TemporaryBorder/" + borderNames[i];
+                GameObject borderObject = RequirePath(scene, borderPath, report);
+                borders[i] = borderObject != null
+                    ? RequireSingleComponent<Image>(borderObject, scene.path, report)
+                    : null;
+                if (borders[i] != null && borders[i].raycastTarget)
+                {
+                    AddInvalid(report, scene.path, borderPath,
+                        "Temporary card border must not block raycasts.");
+                }
+            }
+            if (card != null
+                && (!ObjectArrayMatches(card, "temporaryBorderImages", borders)
+                    || GetObjectProperty(card, "portraitFallbackView") != portraitFallback))
+            {
+                AddInvalid(report, scene.path, "/UICanvas/SafeArea/CardArea/Card",
+                    "Card fallback border or portrait fallback references are incorrect.");
+            }
+            Outline cardOutline = cardObject != null ? cardObject.GetComponent<Outline>() : null;
+            if (cardOutline == null
+                || cardOutline.effectDistance != new Vector2(1.25f, -1.25f))
+            {
+                AddInvalid(report, scene.path, "/UICanvas/SafeArea/CardArea/Card",
+                    "Temporary card outline must use the sharp 1.25-unit fallback.");
+            }
             ValidateTextColour(scene, "/UICanvas/SafeArea/CardArea/Card/Speaker",
                 SpeakerTextColour, report);
             ValidateTextColour(scene, "/UICanvas/SafeArea/CardArea/Card/Body",
@@ -1674,10 +2340,26 @@ namespace RoyalDecisions.Editor
             RequirePath(scene, "/UICanvas/SafeArea/GameOverPanel/Content/Title", report);
             RequirePath(scene, "/UICanvas/SafeArea/GameOverPanel/Content/Body", report);
             RequirePath(scene, "/UICanvas/SafeArea/GameOverPanel/Content/RestartButton/Text (TMP)", report);
+            string[] obsoleteNames = { "Illustration", "Title", "Body", "BODY", "RestartButton" };
+            for (int i = 0; panel != null && i < obsoleteNames.Length; i++)
+            {
+                Transform obsolete = panel.transform.Find(obsoleteNames[i]);
+                if (obsolete != null)
+                {
+                    AddInvalid(report, scene.path, HierarchyPath(obsolete),
+                        "Obsolete managed GameOver child must not remain beside Content.");
+                }
+            }
             if (panel != null && panel.activeSelf)
             {
                 AddInvalid(report, scene.path, "/UICanvas/SafeArea/GameOverPanel",
                     "GameOverPanel must start inactive.");
+            }
+            if (panel != null && safeArea != null
+                && panel.transform.GetSiblingIndex() != safeArea.transform.childCount - 1)
+            {
+                AddInvalid(report, scene.path, "/UICanvas/SafeArea/GameOverPanel",
+                    "GameOverPanel must remain the last SafeArea sibling.");
             }
             ValidateExpectedListener(restart, gameOver,
                 nameof(GameOverView.HandleRestartButton), scene.path,
@@ -1697,12 +2379,41 @@ namespace RoyalDecisions.Editor
             RequirePath(scene, "/UICanvas/SafeArea/Footer/Ruler", report);
             RequirePath(scene, "/UICanvas/SafeArea/Footer/Progress", report);
             RequirePath(scene, "/UICanvas/SafeArea/Footer/Seal", report);
+            RectTransform footerRect = footerObject != null
+                ? footerObject.transform as RectTransform : null;
+            if (footerRect == null || !Mathf.Approximately(footerRect.sizeDelta.y, 96f))
+            {
+                AddInvalid(report, scene.path, "/UICanvas/SafeArea/Footer",
+                    "Footer height must be 96 reference units.");
+            }
+
+            TutorialOverlayView tutorialView = tutorialObject != null
+                ? RequireSingleComponent<TutorialOverlayView>(tutorialObject, scene.path, report)
+                : null;
+            TutorialCoordinator tutorial = tutorialObject != null
+                ? RequireSingleComponent<TutorialCoordinator>(tutorialObject, scene.path, report)
+                : null;
+            RequirePath(scene, "/UICanvas/SafeArea/TutorialOverlay/Content/Title", report);
+            RequirePath(scene, "/UICanvas/SafeArea/TutorialOverlay/Content/Body", report);
+            RequirePath(scene, "/UICanvas/SafeArea/TutorialOverlay/Content/NextButton", report);
+            RequirePath(scene, "/UICanvas/SafeArea/TutorialOverlay/Content/SkipButton", report);
+            if (tutorialObject != null && tutorialObject.activeSelf)
+            {
+                AddInvalid(report, scene.path, "/UICanvas/SafeArea/TutorialOverlay",
+                    "Tutorial overlay must start inactive.");
+            }
+            ValidateReference(tutorial, "view", tutorialView, scene.path,
+                "/UICanvas/SafeArea/TutorialOverlay", report);
 
             AudioService audio = audioObject != null
                 ? RequireSingleComponent<AudioService>(audioObject, scene.path, report)
                 : null;
             AudioSource source = audioObject != null
                 ? RequireSingleComponent<AudioSource>(audioObject, scene.path, report)
+                : null;
+            GameObject musicObject = RequirePath(scene, "/AudioService/MusicSource", report);
+            AudioSource music = musicObject != null
+                ? RequireSingleComponent<AudioSource>(musicObject, scene.path, report)
                 : null;
             if (source != null && (source.playOnAwake || source.loop
                 || !Mathf.Approximately(source.spatialBlend, 0f)))
@@ -1713,6 +2424,13 @@ namespace RoyalDecisions.Editor
             {
                 AddInvalid(report, scene.path, "/AudioService", "AudioSource reference is incorrect.");
             }
+            if (music != null && (music.playOnAwake || !music.loop
+                || !Mathf.Approximately(music.spatialBlend, 0f)))
+            {
+                AddInvalid(report, scene.path, "/AudioService/MusicSource",
+                    "Music AudioSource settings are incorrect.");
+            }
+            ValidateReference(audio, "musicSource", music, scene.path, "/AudioService", report);
 
             GameSceneController controller = controllerObject != null
                 ? RequireSingleComponent<GameSceneController>(controllerObject, scene.path, report)
@@ -1735,6 +2453,35 @@ namespace RoyalDecisions.Editor
                 "/GameSceneController", report);
             ValidateReference(controller, "footerView", footer, scene.path,
                 "/GameSceneController", report);
+            ValidateReference(controller, "tutorialCoordinator", tutorial, scene.path,
+                "/GameSceneController", report);
+            AccessibilityPresentationController accessibility = controllerObject != null
+                ? RequireSingleComponent<AccessibilityPresentationController>(
+                    controllerObject, scene.path, report)
+                : null;
+            GameFeedbackController feedback = controllerObject != null
+                ? RequireSingleComponent<GameFeedbackController>(controllerObject, scene.path, report)
+                : null;
+            ApplicationLifecycleController lifecycle = controllerObject != null
+                ? RequireSingleComponent<ApplicationLifecycleController>(
+                    controllerObject, scene.path, report)
+                : null;
+            ValidateReference(accessibility, "swipeController", swipe, scene.path,
+                "/GameSceneController", report);
+            ValidateReference(feedback, "gameSceneController", controller, scene.path,
+                "/GameSceneController", report);
+            ValidateReference(feedback, "cues",
+                AssetDatabase.LoadAssetAtPath<FeedbackCueProfile>(DefaultFeedbackCueProfilePath),
+                scene.path, "/GameSceneController", report);
+            ValidateReference(lifecycle, "gameSceneController", controller, scene.path,
+                "/GameSceneController", report);
+            ValidateReference(lifecycle, "tutorialCoordinator", tutorial, scene.path,
+                "/GameSceneController", report);
+            if (FindComponentsInScene<DevelopmentDebugPanel>(scene).Length != 0)
+            {
+                AddInvalid(report, scene.path, string.Empty,
+                    "DevelopmentDebugPanel must never be serialized into a release scene.");
+            }
 
             if (canvas != null)
             {
@@ -1833,7 +2580,9 @@ namespace RoyalDecisions.Editor
                 || !ColoursMatch(theme.GetStatColor(StatType.People), StatFillColours[0])
                 || !ColoursMatch(theme.GetStatColor(StatType.Security), StatFillColours[1])
                 || !ColoursMatch(theme.GetStatColor(StatType.Authority), StatFillColours[2])
-                || !ColoursMatch(theme.GetStatColor(StatType.Wealth), StatFillColours[3]))
+                || !ColoursMatch(theme.GetStatColor(StatType.Wealth), StatFillColours[3])
+                || !ColoursMatch(theme.PortraitFallbackBackground, SurfaceColour)
+                || !ColoursMatch(theme.PortraitFallbackForeground, SecondaryTextColour))
             {
                 AddInvalid(report, DefaultThemePath, string.Empty,
                     "Default GameUITheme palette differs from the managed neutral baseline.");
@@ -1929,9 +2678,15 @@ namespace RoyalDecisions.Editor
                 scene, "/UICanvas/SafeArea/MainMenuPanel/NewGameButton", report);
             GameObject continueObject = RequirePath(
                 scene, "/UICanvas/SafeArea/MainMenuPanel/ContinueButton", report);
+            GameObject settingsButtonObject = RequirePath(
+                scene, "/UICanvas/SafeArea/MainMenuPanel/SettingsButton", report);
             GameObject controllerObject = RequirePath(scene, "/MainMenuController", report);
             GameObject panelObject = RequirePath(
                 scene, "/UICanvas/SafeArea/MainMenuPanel", report);
+            GameObject settingsPanelObject = RequirePath(
+                scene, "/UICanvas/SafeArea/SettingsPanel", report);
+            GameObject settingsControllerObject = RequirePath(scene, "/SettingsController", report);
+            GameObject audioObject = RequirePath(scene, "/AudioService", report);
 
             // The Game UI foundation deliberately leaves the existing MainMenu scene untouched.
             // Validate the Phase-F localization wiring only when that separately managed migration
@@ -1955,6 +2710,8 @@ namespace RoyalDecisions.Editor
                 : null;
             Button newButton = newObject != null ? newObject.GetComponent<Button>() : null;
             Button continueButton = continueObject != null ? continueObject.GetComponent<Button>() : null;
+            Button settingsButton = settingsButtonObject != null
+                ? settingsButtonObject.GetComponent<Button>() : null;
             ValidateReference(controller, "sessionIntent", intent, scene.path,
                 "/MainMenuController", report);
             ValidateReference(controller, "continueButton", continueButton, scene.path,
@@ -1981,6 +2738,50 @@ namespace RoyalDecisions.Editor
             ValidateExpectedListener(continueButton, controller,
                 nameof(MainMenuController.OnContinuePressed), scene.path,
                 "/UICanvas/SafeArea/MainMenuPanel/ContinueButton", report);
+            SettingsPanelView settingsView = settingsPanelObject != null
+                ? RequireSingleComponent<SettingsPanelView>(settingsPanelObject, scene.path, report)
+                : null;
+            SettingsController settingsController = settingsControllerObject != null
+                ? RequireSingleComponent<SettingsController>(
+                    settingsControllerObject, scene.path, report)
+                : null;
+            ValidateReference(settingsController, "view", settingsView, scene.path,
+                "/SettingsController", report);
+            ValidateExpectedListener(settingsButton, settingsController,
+                nameof(SettingsController.Open), scene.path,
+                "/UICanvas/SafeArea/MainMenuPanel/SettingsButton", report);
+            string[] settingsPaths =
+            {
+                "Content/MusicVolume", "Content/SfxVolume", "Content/MasterMute",
+                "Content/Haptics", "Content/ReducedMotion", "Content/LargerText",
+                "Content/HighContrast", "Content/ApplyButton", "Content/CancelButton",
+                "Content/ResetButton"
+            };
+            for (int i = 0; i < settingsPaths.Length; i++)
+            {
+                RequirePath(scene, "/UICanvas/SafeArea/SettingsPanel/" + settingsPaths[i], report);
+            }
+            if (settingsPanelObject != null && settingsPanelObject.activeSelf)
+            {
+                AddInvalid(report, scene.path, "/UICanvas/SafeArea/SettingsPanel",
+                    "SettingsPanel must start inactive.");
+            }
+            AudioService audio = audioObject != null
+                ? RequireSingleComponent<AudioService>(audioObject, scene.path, report)
+                : null;
+            ValidateReference(settingsController, "audioService", audio, scene.path,
+                "/SettingsController", report);
+            ApplicationLifecycleController lifecycle = controllerObject != null
+                ? RequireSingleComponent<ApplicationLifecycleController>(
+                    controllerObject, scene.path, report)
+                : null;
+            ValidateReference(lifecycle, "settingsController", settingsController, scene.path,
+                "/MainMenuController", report);
+            if (lifecycle != null && !GetBoolProperty(lifecycle, "mainMenuMode"))
+            {
+                AddInvalid(report, scene.path, "/MainMenuController",
+                    "Main-menu lifecycle controller must quit on Back.");
+            }
         }
 
         private static void ValidateBuildScenes(SceneSetupReport report)
@@ -2449,6 +3250,38 @@ namespace RoyalDecisions.Editor
             property.serializedObject.ApplyModifiedProperties();
         }
 
+        private static void SetFloatProperty(
+            Object target,
+            string propertyName,
+            float value,
+            SceneSetupReport report)
+        {
+            SerializedProperty property = FindProperty(target, propertyName, report);
+            if (property == null || Mathf.Approximately(property.floatValue, value))
+            {
+                return;
+            }
+            Undo.RecordObject(target, "Set " + propertyName);
+            property.floatValue = value;
+            property.serializedObject.ApplyModifiedProperties();
+        }
+
+        private static void SetBoolProperty(
+            Object target,
+            string propertyName,
+            bool value,
+            SceneSetupReport report)
+        {
+            SerializedProperty property = FindProperty(target, propertyName, report);
+            if (property == null || property.boolValue == value)
+            {
+                return;
+            }
+            Undo.RecordObject(target, "Set " + propertyName);
+            property.boolValue = value;
+            property.serializedObject.ApplyModifiedProperties();
+        }
+
         private static SerializedProperty FindProperty(
             Object target,
             string propertyName,
@@ -2482,6 +3315,50 @@ namespace RoyalDecisions.Editor
             }
             SerializedProperty property = new SerializedObject(target).FindProperty(propertyName);
             return property != null ? property.objectReferenceValue : null;
+        }
+
+        private static float GetFloatProperty(Object target, string propertyName)
+        {
+            if (target == null)
+            {
+                return 0f;
+            }
+            SerializedProperty property = new SerializedObject(target).FindProperty(propertyName);
+            return property != null ? property.floatValue : 0f;
+        }
+
+        private static bool GetBoolProperty(Object target, string propertyName)
+        {
+            if (target == null)
+            {
+                return false;
+            }
+            SerializedProperty property = new SerializedObject(target).FindProperty(propertyName);
+            return property != null && property.boolValue;
+        }
+
+        private static bool ObjectArrayMatches<T>(
+            Object target,
+            string propertyName,
+            T[] expected) where T : Object
+        {
+            if (target == null)
+            {
+                return false;
+            }
+            SerializedProperty property = new SerializedObject(target).FindProperty(propertyName);
+            if (property == null || !property.isArray || property.arraySize != expected.Length)
+            {
+                return false;
+            }
+            for (int i = 0; i < expected.Length; i++)
+            {
+                if (property.GetArrayElementAtIndex(i).objectReferenceValue != expected[i])
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
         private static string GetStringProperty(Object target, string propertyName)
@@ -2603,6 +3480,27 @@ namespace RoyalDecisions.Editor
             return created;
         }
 
+        private static FeedbackCueProfile EnsureDefaultFeedbackCueProfile(
+            SceneSetupReport report)
+        {
+            Object existing = AssetDatabase.LoadMainAssetAtPath(DefaultFeedbackCueProfilePath);
+            if (existing != null && !(existing is FeedbackCueProfile))
+            {
+                report.Add(SceneSetupIssueSeverity.Error, "ASSET_TYPE_CONFLICT", "Assets",
+                    DefaultFeedbackCueProfilePath, string.Empty,
+                    "The feedback profile path is occupied by " + existing.GetType().Name + ".");
+                return null;
+            }
+            if (existing is FeedbackCueProfile profile)
+            {
+                return profile;
+            }
+            EnsureAssetFolder("Assets/_Game/Content/UI");
+            FeedbackCueProfile created = ScriptableObject.CreateInstance<FeedbackCueProfile>();
+            AssetDatabase.CreateAsset(created, DefaultFeedbackCueProfilePath);
+            return created;
+        }
+
         private static void EnsureAssetFolder(string path)
         {
             string[] parts = path.Split('/');
@@ -2680,7 +3578,7 @@ namespace RoyalDecisions.Editor
             string[] managedAssets =
             {
                 GameScenePath, BootstrapScenePath, MainMenuScenePath, SessionIntentPath,
-                DefaultThemePath
+                DefaultThemePath, DefaultFeedbackCueProfilePath
             };
             for (int i = 0; i < managedAssets.Length; i++)
             {
@@ -2965,7 +3863,7 @@ namespace RoyalDecisions.Editor
 
         private static string AbsoluteProjectPath(string relativePath)
         {
-            return Path.GetFullPath(Path.Combine(Application.dataPath, "..", relativePath));
+            return Path.GetFullPath(Path.Combine(UnityEngine.Application.dataPath, "..", relativePath));
         }
 
         private static string BackupAbsolutePath => AbsoluteProjectPath(BackupRelativePath);
@@ -3008,6 +3906,40 @@ namespace RoyalDecisions.Editor
             public RectTransform Root { get; }
             public RunStatusView RunStatus { get; }
             public FooterView Footer { get; }
+        }
+
+        private readonly struct TutorialParts
+        {
+            public TutorialParts(
+                RectTransform root,
+                TutorialOverlayView view,
+                TutorialCoordinator coordinator)
+            {
+                Root = root;
+                View = view;
+                Coordinator = coordinator;
+            }
+
+            public RectTransform Root { get; }
+            public TutorialOverlayView View { get; }
+            public TutorialCoordinator Coordinator { get; }
+        }
+
+        private readonly struct SettingsParts
+        {
+            public SettingsParts(
+                RectTransform root,
+                SettingsPanelView view,
+                SettingsController controller)
+            {
+                Root = root;
+                View = view;
+                Controller = controller;
+            }
+
+            public RectTransform Root { get; }
+            public SettingsPanelView View { get; }
+            public SettingsController Controller { get; }
         }
 
         [Serializable]

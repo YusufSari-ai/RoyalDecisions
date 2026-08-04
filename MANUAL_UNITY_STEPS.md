@@ -575,3 +575,58 @@ acceptance remain manual and are the only unfinished release gates.
 - [ ] Finish with a clean Unity Console and no Android log errors from project code.
 
 The MVP is not device-accepted until every A1–A3 item is complete on an Android device.
+
+---
+
+## Post-MVP foundation acceptance
+
+The post-MVP automation adds code-only responsive polish, safe content tools, balance simulation,
+lifecycle/release gates, settings/accessibility/audio/haptics, a first-run tutorial, and an
+Editor/Development-Build-only debug panel. Optional art and audio slots may remain empty.
+
+### Visual and accessibility review
+
+- [ ] Device Simulator: 9:16, 19.5:9, 20:9, 21:9 and 4:3 tablet, including top/bottom cutouts.
+- [ ] On phones, confirm the card is 75–80% of Safe Area width when height permits; on tablets,
+      confirm the 920-reference-unit cap.
+- [ ] Check HUD/footer typography, 24-unit bars, sharp temporary border, procedural vignette and
+      portrait silhouette with all designer sprites null.
+- [ ] Check long Turkish dialogue, choice labels and `ÇĞİÖŞÜçğıöşü` in normal and larger-text
+      modes without overlap or clipping.
+- [ ] Check high contrast and reduced motion; reduced motion must use no more than 4° rotation and
+      0.05-second transitions.
+- [ ] Verify GameOver contains only `/Content` replacements and no obsolete direct children.
+
+### Content and simulation review
+
+- [ ] Open `Tools > Royal Decisions > Content Authoring`; create a disposable card under
+      `Content/Cards`, edit/Undo it, inspect incoming/outgoing links, then remove the disposable
+      asset through normal Unity asset workflow.
+- [ ] Confirm existing IDs are read-only in custom inspectors and placeholder content was not
+      regenerated or bulk-overwritten.
+- [ ] Run `Tools > Royal Decisions > Balance Simulator` twice with identical options and compare
+      report hashes; inspect never-observed cards/endings and high-death choices.
+
+### Lifecycle, settings and tutorial review
+
+- [ ] On Android, background/lock during a below-threshold drag: neutral card, no decision/save.
+- [ ] Background immediately after confirmation: exactly one save and one completed exit.
+- [ ] Android Back closes tutorial/settings first, then returns Game to MainMenu; Back on MainMenu
+      requests quit.
+- [ ] Ended/deleted saves disable Continue immediately; New Game replaces the prior main save.
+- [ ] Verify music/SFX volume, master mute, haptics, reduced motion, larger text and high contrast
+      persist after process reconstruction. Missing clips remain silent.
+- [ ] Fresh settings show the deterministic tutorial before any run/save exists; Skip and Complete
+      persist completion; Continue never shows it; Reset Settings enables it again.
+
+### Build and performance review
+
+- [ ] Run `RoyalDecisions.Editor.ReleaseValidationAutomation.ValidateBatch`; resolve every error
+      and warning. Local signing credentials remain a manual release prerequisite and must not be
+      added to tracked project paths.
+- [ ] Development APK output: `Builds/Android/Development/`; unsigned release AAB output:
+      `Builds/Android/Release/`; reports: `Logs/Build/`.
+- [ ] Confirm the debug panel exists in Editor/Development Build and is absent from a release build.
+- [ ] Profile 60 seconds idle, repeated drags, ten decisions, GameOver/restart and scene transitions:
+      zero project-attributed steady-state GC allocation, stable listener/coroutine counts and no
+      growing memory trend.

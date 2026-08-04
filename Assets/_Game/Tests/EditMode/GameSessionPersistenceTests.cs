@@ -106,7 +106,7 @@ namespace RoyalDecisions.Tests.EditMode
         }
 
         [Test]
-        public void ResumingAFinishedRunShowsItsEndingRatherThanACard()
+        public void ResumingAFinishedRunIsRejectedWithoutDeletingIt()
         {
             GameSession first = Build(GameSessionTestContent.WithInstantLoss());
             first.StartNewGame();
@@ -117,10 +117,13 @@ namespace RoyalDecisions.Tests.EditMode
             GameSession resumed = Build(
                 GameSessionTestContent.WithInstantLoss(), resumedPresenter);
 
-            resumed.Resume();
+            SessionResult result = resumed.Resume();
 
-            Assert.That(resumed.State, Is.EqualTo(GameSessionState.ShowingGameOver));
-            Assert.That(resumedPresenter.ShowGameOverCount, Is.EqualTo(1));
+            Assert.That(result.Accepted, Is.False);
+            Assert.That(resumed.State, Is.EqualTo(GameSessionState.Uninitialized));
+            Assert.That(resumedPresenter.ShowGameOverCount, Is.Zero);
+            Assert.That(store.DeleteCount, Is.Zero);
+            Assert.That(resumed.CanResume(), Is.False);
         }
 
         [Test]

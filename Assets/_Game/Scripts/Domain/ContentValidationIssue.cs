@@ -33,6 +33,15 @@ namespace RoyalDecisions.Domain
             return new ContentValidationIssue(ContentIssueSeverity.Warning, code, subjectId, message);
         }
 
+        public static ContentValidationIssue Information(
+            ContentIssueCode code,
+            string subjectId,
+            string message)
+        {
+            return new ContentValidationIssue(
+                ContentIssueSeverity.Information, code, subjectId, message);
+        }
+
         public ContentIssueSeverity Severity { get; }
 
         public ContentIssueCode Code { get; }
@@ -43,6 +52,10 @@ namespace RoyalDecisions.Domain
         public string Message { get; }
 
         public bool IsError => Severity == ContentIssueSeverity.Error;
+
+        public bool IsWarning => Severity == ContentIssueSeverity.Warning;
+
+        public bool IsInformation => Severity == ContentIssueSeverity.Information;
 
         public override string ToString()
         {
